@@ -6,12 +6,17 @@
     <title>Packet Visualization Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        /* Enforce strict layout constraints to prevent scrollbars */
         body { 
             background-color: #0b1120; 
             color: #f8fafc; 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            overflow-x: hidden;
-            user-select: none; /* Prevent text selection while dragging */
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
         }
 
         /* View Transitions */
@@ -31,10 +36,9 @@
         .node-group:hover .node-bg { filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)); }
         
         .healthy .node-bg { fill: #064e3b; stroke: #10b981; stroke-width: 2; }
-        .critical .node-bg { fill: #7f1d1d; stroke: #ef4444; stroke-width: 2; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { filter: drop-shadow(0 0 2px #ef4444); } 50% { filter: drop-shadow(0 0 12px #ef4444); } 100% { filter: drop-shadow(0 0 2px #ef4444); } }
+        .critical .node-bg { fill: #7f1d1d; stroke: #ef4444; stroke-width: 2; animation: pulse-node 2s infinite; }
+        @keyframes pulse-node { 0% { filter: drop-shadow(0 0 2px #ef4444); } 50% { filter: drop-shadow(0 0 12px #ef4444); } 100% { filter: drop-shadow(0 0 2px #ef4444); } }
 
-        /* Make links easier to click with a thicker transparent hit area */
         .link-hitbox { stroke: transparent; stroke-width: 15; cursor: pointer; }
         .link-visible { stroke: #334155; stroke-width: 3; transition: stroke 0.3s; pointer-events: none; }
         
@@ -46,14 +50,12 @@
         .bandwidth-bg { fill: #0b1120; pointer-events: none; }
         .bandwidth-critical { fill: #fca5a5; font-weight: bold; }
 
-        /* Glass Panel Styling */
         .glass-panel {
             background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        /* Info Tooltip */
         .info-tooltip {
             visibility: hidden; opacity: 0; transition: opacity 0.2s;
             background-color: #1e293b; color: #cbd5e1; text-align: center; border-radius: 6px;
@@ -63,23 +65,33 @@
         }
         .info-container:hover .info-tooltip { visibility: visible; opacity: 1; }
 
-        /* Gradient mask for smooth text disappearance on the edges */
-        .ticker-mask {
-            -webkit-mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent);
-            mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent);
+        /* Ticker Animation Fix */
+        @keyframes scrollTicker {
+            0% { transform: translateX(0); } /* Start immediately visible */
+            100% { transform: translateX(-100%); }
+        }
+        .ticker-animate {
+            display: inline-block;
+            white-space: nowrap;
+            /* Lengthened time slightly so it's readable if it starts immediately */
+            animation: scrollTicker 20s linear infinite;
+            padding-left: 1rem; /* Removed the 100% padding */
+        }
+        /* Pause ticker on hover so users can read long text easily */
+        #tickerContainer:hover .ticker-animate {
+            animation-play-state: paused;
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col relative">
+<body class="flex flex-col">
 
-    <main id="view-setup" class="flex-grow flex flex-col items-center justify-center p-6 fade-in">
-        
-        <div class="text-center mb-10">
+    <main id="view-setup" class="flex-grow flex flex-col items-center justify-center p-6 fade-in h-full overflow-y-auto">
+        <div class="text-center mb-10 mt-10">
             <h1 class="text-4xl font-extrabold tracking-tight text-white mb-2">Packet Visualization Tool</h1>
             <p class="text-slate-400">Ingest .pcap files or simulate network topologies for SR-TE analysis.</p>
         </div>
 
-        <div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
             <div class="glass-panel p-8 rounded-xl flex flex-col items-center justify-center text-center drop-zone" id="dropZone">
                 <svg class="w-16 h-16 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                 <h2 class="text-xl font-bold text-white mb-2">Upload Packet Capture</h2>
@@ -91,11 +103,10 @@
             </div>
 
             <div class="glass-panel p-8 rounded-xl flex flex-col justify-center relative">
-                
                 <div class="absolute top-6 right-6 info-container cursor-help">
                     <svg class="w-6 h-6 text-slate-400 hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <div class="info-tooltip">
-                        <strong>Prototype Mode:</strong> These configuration fields are for UI demonstration only. The resulting visualization will load a static, pre-defined topology regardless of the values selected here.
+                        <strong>Prototype Mode:</strong> These fields are for UI demonstration only. The visualization will load a static topology regardless of these values.
                     </div>
                 </div>
 
@@ -135,33 +146,37 @@
         <p class="text-slate-500 text-sm mt-2 font-mono" id="loadingSubtext">Extracting node connections</p>
     </div>
 
-    <main id="view-graph" class="flex-grow flex flex-col relative view-hidden fade-in">
+    <main id="view-graph" class="h-full flex flex-col relative view-hidden fade-in overflow-hidden">
         
-        <header class="min-h-16 py-3 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50">
-            <div class="flex-shrink-0">
+        <header class="h-20 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 shrink-0">
+            <div class="w-1/4">
                 <h1 class="text-lg font-bold text-white tracking-wide">ACTIVE TOPOLOGY</h1>
                 <p class="text-xs text-slate-400 font-mono" id="simTitle">Source: Manual Configuration</p>
             </div>
-            
-            <div id="tickerContainer" class="hidden flex-grow mx-8 bg-slate-800/80 border border-slate-700/50 rounded-lg px-4 py-2 relative flex items-center shadow-inner h-10">
-                <div class="w-full overflow-hidden ticker-mask">
-                    <div id="tickerText" class="whitespace-nowrap font-mono text-sm inline-block">
-                        </div>
+
+            <div class="flex-grow mx-6 h-10 bg-slate-950 border border-slate-800 rounded flex items-center overflow-hidden shadow-inner relative" id="tickerContainer">
+                <div class="absolute w-full h-full flex items-center overflow-hidden cursor-default">
+                    <div id="tickerText" class="ticker-animate font-mono text-sm tracking-widest text-slate-500">
+                        Awaiting input... Select a node or link to view live telemetry data.
+                    </div>
                 </div>
+                <div class="absolute left-0 w-8 h-full bg-gradient-to-r from-slate-950 to-transparent z-10"></div>
+                <div class="absolute right-0 w-8 h-full bg-gradient-to-l from-slate-950 to-transparent z-10"></div>
             </div>
 
-            <button id="resetBtn" class="flex-shrink-0 text-sm text-slate-400 hover:text-white border border-slate-700 px-3 py-1 rounded transition-colors">
-                ← New Simulation
-            </button>
+            <div class="w-1/4 flex justify-end">
+                <button id="resetBtn" class="text-sm text-slate-400 hover:text-white border border-slate-700 px-4 py-2 rounded transition-colors bg-slate-800 hover:bg-slate-700">
+                    ← New Simulation
+                </button>
+            </div>
         </header>
 
-        <div class="flex-grow relative overflow-hidden" id="canvasContainer">
-            <svg viewBox="0 0 1000 600" class="w-full h-full" id="networkMap">
+        <div class="flex-grow relative overflow-hidden bg-[#0b1120]" id="canvasContainer">
+            <svg viewBox="0 0 1000 600" class="w-full h-full" id="networkMap" preserveAspectRatio="xMidYMid meet">
                 <g id="linksLayer"></g>
                 <g id="nodesLayer"></g>
             </svg>
         </div>
-
     </main>
 
     <script>
@@ -184,7 +199,7 @@
                 viewLoading.classList.add('view-hidden');
                 viewGraph.classList.remove('view-hidden');
                 document.getElementById('loadingSubtext').textContent = "Extracting node connections"; 
-                initGraph(); // Initialize the draggable canvas
+                initGraph(); 
             }, 2500);
         }
 
@@ -204,93 +219,42 @@
         document.getElementById('resetBtn').addEventListener('click', () => {
             viewGraph.classList.add('view-hidden');
             viewSetup.classList.remove('view-hidden');
-            document.getElementById('tickerContainer').classList.add('hidden'); // Hide ticker on reset
+            updateTicker('SYSTEM', 'STANDBY', 'Awaiting input... Select a node or link to view live telemetry data.', false);
         });
 
-        // --- TICKER ANIMATION LOGIC ---
-        let tickerTimer;
-        let tickerPhaseTimer;
-
-        function showTickerInfo(htmlContent) {
-            const tickerContainer = document.getElementById('tickerContainer');
-            const tickerText = document.getElementById('tickerText');
+        // --- TICKER LOGIC ---
+        function updateTicker(title, status, details, isCritical) {
+            const ticker = document.getElementById('tickerText');
             
-            tickerContainer.classList.remove('hidden');
-            tickerText.innerHTML = htmlContent;
+            ticker.classList.remove('ticker-animate');
+            void ticker.offsetWidth; 
             
-            // Clear any currently running animations
-            clearTimeout(tickerTimer);
-            clearTimeout(tickerPhaseTimer);
+            const colorClass = isCritical ? 'text-red-400 font-bold' : 'text-emerald-400';
+            ticker.innerHTML = `<span class="text-blue-400">[${title.toUpperCase()}]</span> <span class="${colorClass}">STATUS: ${status}</span> <span class="text-slate-500 px-2">||</span> <span class="text-slate-300">${details}</span>`;
             
-            // Instantly reset the scroll position so it shows immediately
-            tickerText.style.transition = 'none';
-            tickerText.style.transform = 'translateX(0)';
-            
-            // Wait a tick for the DOM to update to get correct widths
-            setTimeout(() => {
-                // Determine if we need to scroll (if text is wider than container mask)
-                const cWidth = tickerContainer.offsetWidth - 32; // subtracting padding
-                const tWidth = tickerText.scrollWidth;
-                
-                if (tWidth > cWidth) {
-                    runTickerLoop(cWidth, tWidth);
-                }
-            }, 10);
+            ticker.classList.add('ticker-animate');
         }
 
-        function runTickerLoop(containerWidth, textWidth) {
-            const tickerText = document.getElementById('tickerText');
-            const distance = textWidth - containerWidth + 20; // Extra pixels to ensure it clears the frame
-            const duration = distance / 60; // 60px per second reading speed
-            
-            function cycle() {
-                // 1. Initial 1s pause while the text sits at 0 (Shows immediately)
-                tickerPhaseTimer = setTimeout(() => {
-                    
-                    // 2. Animate and scroll all the way left
-                    tickerText.style.transition = `transform ${duration}s linear`;
-                    tickerText.style.transform = `translateX(-${distance}px)`;
-                    
-                    // 3. Wait for animation to finish, plus the 1s break
-                    tickerPhaseTimer = setTimeout(() => {
-                        
-                        // 4. Snap back to the start instantly
-                        tickerText.style.transition = 'none';
-                        tickerText.style.transform = 'translateX(0)';
-                        
-                        // 5. Restart the cycle instantly (cycle will wait 1s before moving again)
-                        tickerTimer = setTimeout(cycle, 50);
-
-                    }, (duration * 1000) + 1000); 
-
-                }, 1000);
-            }
-            
-            cycle(); // Kick off the loop
-        }
-
-
-        // --- 2. DYNAMIC GRAPH LOGIC (SPIDER WEB DRAGGING) ---
-        
-        // Data Models
+        // --- 2. DYNAMIC GRAPH LOGIC ---
+        // Enhanced mock data with specific networking protocols (BGP, OSPF, IS-IS, SR-TE)
         const nodesData = [
-            { id: 's1', type: 'rect', label: 'SPINE-1', x: 300, y: 150, status: 'healthy', info: 'Up | Load: 45%' },
-            { id: 's2', type: 'rect', label: 'SPINE-2', x: 700, y: 150, status: 'healthy', info: 'Up | Load: 30%' },
-            { id: 'l1', type: 'circle', label: 'L-1', x: 150, y: 400, status: 'healthy', info: 'Up | BGP Est.' },
-            { id: 'l2', type: 'circle', label: 'L-2', x: 400, y: 400, status: 'healthy', info: 'Up | BGP Est.' },
-            { id: 'l3', type: 'circle', label: 'L-3', x: 600, y: 400, status: 'critical', info: 'CRITICAL | Packet Loss 22%' },
-            { id: 'l4', type: 'circle', label: 'L-4', x: 850, y: 400, status: 'healthy', info: 'Up | BGP Est.' }
+            { id: 's1', type: 'rect', label: 'SPINE-1', x: 300, y: 150, status: 'healthy', info: 'Up | Load: 45% | BGP AS 65001 | OSPFv2 Neighbor Full' },
+            { id: 's2', type: 'rect', label: 'SPINE-2', x: 700, y: 150, status: 'healthy', info: 'Up | Load: 30% | IS-IS L2 Adj Up | SRGB: 16000-24000' },
+            { id: 'l1', type: 'circle', label: 'L-1', x: 150, y: 400, status: 'healthy', info: 'Up | BGP EVPN Est. | 150 MAC routes learned via Type 2' },
+            { id: 'l2', type: 'circle', label: 'L-2', x: 400, y: 400, status: 'healthy', info: 'Up | MPLS Forwarding Active | SR-TE Tunnel-100 Up' },
+            { id: 'l3', type: 'circle', label: 'L-3', x: 600, y: 400, status: 'critical', info: 'CRITICAL | Packet Loss 22% | LDP Session Down | IGP Sync failed' },
+            { id: 'l4', type: 'circle', label: 'L-4', x: 850, y: 400, status: 'healthy', info: 'Up | BGP LU Est. | Label Bindings Active' }
         ];
 
         const linksData = [
-            { id: 'link1', source: 's1', target: 'l1', type: 'active', bw: '1.2 Tbps' },
-            { id: 'link2', source: 's1', target: 'l2', type: 'normal', bw: '450 Gbps' },
-            { id: 'link3', source: 's1', target: 'l3', type: 'critical', bw: 'DROPPING', error: 'Microburst congestion on interface ge-0/0/2 causing tail drops. Recommended action: Check buffer allocation.' },
-            { id: 'link4', source: 's1', target: 'l4', type: 'normal', bw: '' },
-            { id: 'link5', source: 's2', target: 'l1', type: 'normal', bw: '' },
-            { id: 'link6', source: 's2', target: 'l2', type: 'normal', bw: '' },
-            { id: 'link7', source: 's2', target: 'l3', type: 'normal', bw: '' },
-            { id: 'link8', source: 's2', target: 'l4', type: 'active', bw: '800 Gbps' },
+            { id: 'link1', source: 's1', target: 'l1', type: 'active', bw: '1.2 Tbps', detail: 'Active | SR-TE Path | metric 10' },
+            { id: 'link2', source: 's1', target: 'l2', type: 'normal', bw: '450 Gbps', detail: 'Forwarding | LDP Enabled | metric 20' },
+            { id: 'link3', source: 's1', target: 'l3', type: 'critical', bw: 'DROPPING', error: 'Microburst congestion on ge-0/0/2. RSVP-TE path tear-down detected. Buffer allocation exceeded limit.' },
+            { id: 'link4', source: 's1', target: 'l4', type: 'normal', bw: '', detail: 'Idle | OSPF Cost: 10' },
+            { id: 'link5', source: 's2', target: 'l1', type: 'normal', bw: '', detail: 'Idle | IS-IS Metric: 10' },
+            { id: 'link6', source: 's2', target: 'l2', type: 'normal', bw: '', detail: 'Idle | BGP Next-Hop Reachable' },
+            { id: 'link7', source: 's2', target: 'l3', type: 'normal', bw: '', detail: 'Idle | IGP Adjacency Pending' },
+            { id: 'link8', source: 's2', target: 'l4', type: 'active', bw: '800 Gbps', detail: 'Active | SR-TE Path | metric 15' },
         ];
 
         const svg = document.getElementById('networkMap');
@@ -300,20 +264,17 @@
         let graphInitialized = false;
 
         function initGraph() {
-            if(graphInitialized) return; // Prevent double rendering
+            if(graphInitialized) return; 
             
-            // Render Links
             linksData.forEach(link => {
                 const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
                 g.setAttribute('class', `link-group link-${link.type}`);
                 g.id = `g-${link.id}`;
 
-                // Invisible wide hitbox for easier clicking
                 const hitbox = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 hitbox.setAttribute('class', 'link-hitbox');
                 hitbox.id = `hitbox-${link.id}`;
                 
-                // Visible line
                 const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 line.setAttribute('class', 'link-visible');
                 line.id = `line-${link.id}`;
@@ -321,7 +282,6 @@
                 g.appendChild(hitbox);
                 g.appendChild(line);
 
-                // Add Bandwidth Label if exists
                 if(link.bw) {
                     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     rect.setAttribute('class', 'bandwidth-bg');
@@ -338,22 +298,16 @@
                     g.appendChild(text);
                 }
 
-                // Link Click Event - Push to header ticker
+                // Ticker update on link click
                 hitbox.addEventListener('click', () => {
-                    const statusClass = link.type === 'critical' ? 'text-red-400 font-bold' : 'text-emerald-400';
-                    const detailText = link.type === 'critical' ? link.error : `Current Bandwidth: ${link.bw || 'Idle'}. No errors detected.`;
-                    
-                    const html = `<span class="text-slate-500 font-bold mr-2 border-r border-slate-600 pr-2">LINK EVENT</span> 
-                                  <span class="text-slate-400">Status:</span> <span class="${statusClass} mr-4">${link.type.toUpperCase()}</span> 
-                                  <span class="text-slate-400">Details/Reason:</span> <span class="text-white">${detailText}</span>`;
-                    
-                    showTickerInfo(html);
+                    const isCrit = link.type === 'critical';
+                    const details = isCrit ? link.error : `Current Bandwidth: ${link.bw || 'Idle'}. ${link.detail}`;
+                    updateTicker(`LINK: ${link.source} ↔ ${link.target}`, link.type, details, isCrit);
                 });
 
                 linksLayer.appendChild(g);
             });
 
-            // Render Nodes
             nodesData.forEach(node => {
                 const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
                 g.setAttribute('class', `node-group ${node.status}`);
@@ -382,23 +336,19 @@
                 text.textContent = node.label;
                 g.appendChild(text);
 
-                // Node Click Event - Push to header ticker
+                // Ticker update on node click
                 g.addEventListener('click', (e) => {
-                    if(e.defaultPrevented) return; // Prevent drag release from firing click
-                    
+                    if(e.defaultPrevented) return; 
+                    // Split the new extended info string
                     const infoParts = node.info.split(' | ');
-                    const statusClass = node.status === 'critical' ? 'text-red-400 font-bold' : 'text-emerald-400';
+                    const statusText = infoParts[0];
+                    const detailsText = infoParts.slice(1).join(' | ');
                     
-                    const html = `<span class="text-slate-500 font-bold mr-2 border-r border-slate-600 pr-2">NODE: ${node.label}</span> 
-                                  <span class="text-slate-400">Status:</span> <span class="${statusClass} mr-4">${infoParts[0]}</span> 
-                                  <span class="text-slate-400">Details:</span> <span class="text-white">${infoParts[1]}</span>`;
-                    
-                    showTickerInfo(html);
+                    const isCrit = node.status === 'critical';
+                    updateTicker(`NODE: ${node.label}`, statusText, detailsText, isCrit);
                 });
 
-                // Drag Events
                 g.addEventListener('mousedown', (e) => { draggedNode = node; });
-
                 nodesLayer.appendChild(g);
             });
 
@@ -406,18 +356,14 @@
             graphInitialized = true;
         }
 
-        // Math mapping to SVG coordinate space
         function getMousePosition(evt) {
             const CTM = svg.getScreenCTM();
-            return {
-                x: (evt.clientX - CTM.e) / CTM.a,
-                y: (evt.clientY - CTM.f) / CTM.d
-            };
+            return { x: (evt.clientX - CTM.e) / CTM.a, y: (evt.clientY - CTM.f) / CTM.d };
         }
 
         svg.addEventListener('mousemove', (e) => {
             if (draggedNode) {
-                e.preventDefault(); // Stop text selection
+                e.preventDefault(); 
                 const pos = getMousePosition(e);
                 draggedNode.x = pos.x;
                 draggedNode.y = pos.y;
@@ -429,13 +375,11 @@
         svg.addEventListener('mouseleave', () => { draggedNode = null; });
 
         function updatePositions() {
-            // Update Nodes
             nodesData.forEach(node => {
                 const g = document.getElementById(`node-${node.id}`);
                 g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
             });
 
-            // Update Links
             linksData.forEach(link => {
                 const source = nodesData.find(n => n.id === link.source);
                 const target = nodesData.find(n => n.id === link.target);
