@@ -3,225 +3,284 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intent-Driven Telemetry | Network Visualizer</title>
+    <title>Telemetry Ingestion & Visualization</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Base Canvas Styles */
-        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
-        
-        /* Node Animations */
-        .node-healthy { fill: #10b981; transition: fill 0.3s; }
-        .node-healthy:hover { fill: #34d399; filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.8)); cursor: pointer; }
-        
-        @keyframes pulse-critical {
-            0% { filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.5)); }
-            50% { filter: drop-shadow(0 0 15px rgba(239, 68, 68, 1)); transform: scale(1.1); }
-            100% { filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.5)); }
+        body { 
+            background-color: #0b1120; 
+            color: #f8fafc; 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow-x: hidden;
         }
-        .node-critical { fill: #ef4444; transform-origin: center; animation: pulse-critical 2s infinite; cursor: pointer; }
-        
-        /* Tooltip Glassmorphism */
+
+        /* View Transitions */
+        .view-hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Drag & Drop Zone */
+        .drop-zone {
+            border: 2px dashed #334155;
+            transition: all 0.2s ease;
+        }
+        .drop-zone.dragover {
+            border-color: #3b82f6;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        /* SVG Node Animations */
+        .node-group { cursor: pointer; transition: transform 0.2s; transform-origin: center; }
+        .node-group:hover { transform: scale(1.1); }
+        .healthy .node-bg { fill: #064e3b; stroke: #10b981; stroke-width: 2; }
+        .critical .node-bg { fill: #7f1d1d; stroke: #ef4444; stroke-width: 2; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { filter: drop-shadow(0 0 2px #ef4444); } 50% { filter: drop-shadow(0 0 12px #ef4444); } 100% { filter: drop-shadow(0 0 2px #ef4444); } }
+
+        /* Links & Bandwidth */
+        .link { stroke: #334155; stroke-width: 3; transition: stroke 0.3s; }
+        .link-active { stroke: #0ea5e9; stroke-width: 4; filter: drop-shadow(0 0 5px rgba(14, 165, 233, 0.5)); }
+        .link-critical { stroke: #ef4444; stroke-width: 4; stroke-dasharray: 8; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -16; } }
+
+        .bandwidth-label {
+            font-family: monospace;
+            font-size: 11px;
+            fill: #94a3b8;
+            background: #0b1120;
+            user-select: none;
+        }
+        .bandwidth-critical { fill: #fca5a5; font-weight: bold; }
+
+        /* Glass Panel Popup */
         .glass-panel {
-            background: rgba(30, 41, 59, 0.85);
+            background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
-        }
-
-        /* SVG Line Animations */
-        .link-default { stroke: #334155; stroke-width: 3; transition: stroke 0.3s, opacity 0.5s; }
-        .map-dimmed .link-default { opacity: 0.2; }
-        .map-dimmed .node { opacity: 0.3; }
-        .map-dimmed .node.active-path { opacity: 1; }
-
-        .trace-path {
-            stroke: #06b6d4; /* Cyan glow */
-            stroke-width: 4;
-            fill: none;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.8));
-            /* Animation setup */
-            stroke-dasharray: 1000;
-            stroke-dashoffset: 1000;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .trace-active {
-            opacity: 1;
-            animation: drawPath 1.5s ease-out forwards;
-        }
-
-        @keyframes drawPath {
-            to { stroke-dashoffset: 0; }
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col overflow-hidden relative">
+<body class="min-h-screen flex flex-col relative">
 
-    <header class="p-6 border-b border-slate-800 flex justify-between items-center z-10">
-        <div>
-            <h1 class="text-2xl font-bold tracking-wider">NETWORK <span class="text-blue-500">TELEMETRY</span></h1>
-            <p class="text-slate-400 text-sm mt-1">Data Center Fabric View • Live Topology</p>
-        </div>
-        <div class="flex gap-4 items-center">
-            <span class="flex items-center gap-2 text-sm"><span class="w-3 h-3 rounded-full bg-emerald-500"></span> Nominal</span>
-            <span class="flex items-center gap-2 text-sm"><span class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></span> Anomaly Detected</span>
-        </div>
-    </header>
-
-    <main class="flex-grow relative flex items-center justify-center p-10" id="topologyContainer">
-        
-        <svg viewBox="0 0 800 500" class="w-full max-w-5xl h-auto overflow-visible z-0" id="networkMap">
-            <path class="link-default" d="M 100 250 L 300 150" />
-            <path class="link-default" d="M 100 250 L 300 350" />
-            <path class="link-default" d="M 300 150 L 500 250" />
-            <path class="link-default" d="M 300 350 L 500 250" />
-            <path class="link-default" d="M 300 150 L 500 100" />
-            <path class="link-default" d="M 500 100 L 700 250" />
-            <path class="link-default" d="M 500 250 L 700 250" />
-
-            <path id="activeTrace" class="trace-path" d="M 100 250 L 300 350 L 500 250 L 700 250" />
-
-            <circle cx="100" cy="250" r="16" class="node node-healthy active-path" data-id="pe-1" />
-            <text x="100" y="285" fill="#94a3b8" font-size="12" text-anchor="middle">PE-1 (Edge)</text>
-
-            <circle cx="300" cy="150" r="16" class="node node-healthy" data-id="spine-1" />
-            <text x="300" y="120" fill="#94a3b8" font-size="12" text-anchor="middle">Spine-01</text>
-
-            <circle cx="300" cy="350" r="16" class="node node-healthy active-path" data-id="spine-2" />
-            <text x="300" y="385" fill="#94a3b8" font-size="12" text-anchor="middle">Spine-02</text>
-
-            <circle cx="500" cy="100" r="16" class="node node-healthy" data-id="leaf-1" />
-            <text x="500" y="70" fill="#94a3b8" font-size="12" text-anchor="middle">Leaf-01</text>
-
-            <circle cx="500" cy="250" r="16" class="node node-healthy active-path" data-id="leaf-2" />
-            <text x="500" y="285" fill="#94a3b8" font-size="12" text-anchor="middle">Leaf-02</text>
-
-            <circle cx="700" cy="250" r="18" class="node node-critical active-path" data-id="pe-2" />
-            <text x="700" y="285" fill="#ef4444" font-weight="bold" font-size="14" text-anchor="middle">PE-2 (Issue)</text>
-        </svg>
-
-        <div id="telemetryTooltip" class="glass-panel absolute rounded-xl p-5 w-72 text-sm hidden z-20 transition-opacity duration-200 opacity-0 pointer-events-none">
-            <div class="flex justify-between items-start mb-3 border-b border-slate-700 pb-3">
-                <div>
-                    <h3 class="font-bold text-lg text-white" id="tt-name">Node ID</h3>
-                    <p class="text-slate-400 text-xs uppercase tracking-wide" id="tt-role">Role</p>
-                </div>
-                <span id="tt-status-badge" class="px-2 py-1 rounded text-xs font-bold">Status</span>
-            </div>
+    <main id="view-setup" class="flex-grow flex items-center justify-center p-6 fade-in">
+        <div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8">
             
-            <div class="space-y-2 mb-5">
-                <div class="flex justify-between">
-                    <span class="text-slate-400">Packet Loss (IP/MPLS):</span>
-                    <span class="font-mono text-white" id="tt-loss">0%</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-400">Latency:</span>
-                    <span class="font-mono text-white" id="tt-latency">0ms</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-400">Throughput:</span>
-                    <span class="font-mono text-white" id="tt-throughput">0 Gbps</span>
-                </div>
+            <div class="glass-panel p-8 rounded-xl flex flex-col items-center justify-center text-center drop-zone" id="dropZone">
+                <svg class="w-16 h-16 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <h2 class="text-xl font-bold text-white mb-2">Upload Packet Capture</h2>
+                <p class="text-slate-400 text-sm mb-6">Drag & drop a .pcap or .pcapng file here to automatically map telemetry.</p>
+                <input type="file" id="fileInput" class="hidden" accept=".pcap,.pcapng" />
+                <button onclick="document.getElementById('fileInput').click()" class="bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-6 rounded transition-colors">
+                    Browse Files
+                </button>
             </div>
 
-            <button id="traceBtn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded transition-colors hidden pointer-events-auto">
-                Trace Traffic Path
+            <div class="glass-panel p-8 rounded-xl flex flex-col justify-center">
+                <h2 class="text-xl font-bold text-white mb-2">Manual Configuration</h2>
+                <p class="text-slate-400 text-sm mb-6">Or define the fabric parameters to generate a live simulation.</p>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Topology Type</label>
+                        <select class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:border-blue-500 focus:outline-none">
+                            <option>Spine-Leaf Architecture</option>
+                            <option>Ring Topology</option>
+                            <option>Hub and Spoke</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="w-1/2">
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Spine Nodes</label>
+                            <input type="number" value="2" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:border-blue-500 focus:outline-none">
+                        </div>
+                        <div class="w-1/2">
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Leaf Nodes</label>
+                            <input type="number" value="4" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:border-blue-500 focus:outline-none">
+                        </div>
+                    </div>
+                    <button id="generateBtn" class="w-full bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white font-medium py-2 rounded mt-2 transition-colors">
+                        Generate Visualization
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="view-loading" class="fixed inset-0 bg-[#0b1120] z-50 flex flex-col items-center justify-center view-hidden">
+        <div class="w-16 h-16 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+        <h2 class="text-xl font-mono text-white" id="loadingText">Parsing Telemetry Data...</h2>
+        <p class="text-slate-500 text-sm mt-2 font-mono" id="loadingSubtext">Extracting node connections</p>
+    </div>
+
+    <main id="view-graph" class="flex-grow flex flex-col relative view-hidden fade-in">
+        
+        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50">
+            <div>
+                <h1 class="text-lg font-bold text-white tracking-wide">ACTIVE TOPOLOGY</h1>
+                <p class="text-xs text-slate-400 font-mono" id="simTitle">Source: Manual Configuration</p>
+            </div>
+            <button id="resetBtn" class="text-sm text-slate-400 hover:text-white border border-slate-700 px-3 py-1 rounded transition-colors">
+                ← New Simulation
             </button>
+        </header>
+
+        <div class="flex-grow relative flex items-center justify-center" id="canvasContainer">
+            <svg viewBox="0 0 1000 600" class="w-full max-w-5xl h-auto" id="networkMap">
+                
+                <line x1="300" y1="150" x2="150" y2="400" class="link link-active" />
+                <rect x="190" y="260" width="60" height="20" fill="#0b1120" rx="4"/>
+                <text x="220" y="274" class="bandwidth-label" text-anchor="middle">1.2 Tbps</text>
+
+                <line x1="300" y1="150" x2="400" y2="400" class="link" />
+                <rect x="320" y="260" width="60" height="20" fill="#0b1120" rx="4"/>
+                <text x="350" y="274" class="bandwidth-label" text-anchor="middle">450 Gbps</text>
+
+                <line x1="300" y1="150" x2="600" y2="400" class="link link-critical" />
+                <rect x="420" y="260" width="70" height="20" fill="#0b1120" rx="4" stroke="#ef4444" stroke-width="1"/>
+                <text x="455" y="274" class="bandwidth-label bandwidth-critical" text-anchor="middle">DROPPING</text>
+
+                <line x1="300" y1="150" x2="850" y2="400" class="link" />
+
+                <line x1="700" y1="150" x2="150" y2="400" class="link" />
+                <line x1="700" y1="150" x2="400" y2="400" class="link" />
+                <line x1="700" y1="150" x2="600" y2="400" class="link" />
+                <line x1="700" y1="150" x2="850" y2="400" class="link link-active" />
+                <rect x="745" y="260" width="60" height="20" fill="#0b1120" rx="4"/>
+                <text x="775" y="274" class="bandwidth-label" text-anchor="middle">800 Gbps</text>
+
+                <g class="node-group healthy" data-info="Spine-01 | Up | Load: 45%" transform="translate(300, 150)">
+                    <rect x="-35" y="-25" width="70" height="50" rx="8" class="node-bg" />
+                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">SPINE-1</text>
+                </g>
+                <g class="node-group healthy" data-info="Spine-02 | Up | Load: 30%" transform="translate(700, 150)">
+                    <rect x="-35" y="-25" width="70" height="50" rx="8" class="node-bg" />
+                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">SPINE-2</text>
+                </g>
+
+                <g class="node-group healthy" data-info="Leaf-01 | Up | BGP Est." transform="translate(150, 400)">
+                    <circle r="25" class="node-bg" />
+                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-1</text>
+                </g>
+                <g class="node-group healthy" data-info="Leaf-02 | Up | BGP Est." transform="translate(400, 400)">
+                    <circle r="25" class="node-bg" />
+                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-2</text>
+                </g>
+                <g class="node-group critical" data-info="Leaf-03 | CRITICAL | Packet Loss 22%" transform="translate(600, 400)">
+                    <circle r="25" class="node-bg" />
+                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-3</text>
+                </g>
+                <g class="node-group healthy" data-info="Leaf-04 | Up | BGP Est." transform="translate(850, 400)">
+                    <circle r="25" class="node-bg" />
+                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-4</text>
+                </g>
+            </svg>
+        </div>
+
+        <div id="nodePopup" class="absolute bottom-8 right-8 w-80 glass-panel rounded-lg p-5 view-hidden fade-in z-50 border-t-4 border-blue-500 shadow-2xl">
+            <h3 class="text-sm font-bold text-white mb-1 uppercase tracking-wider" id="popupTitle">Node Detail</h3>
+            <div class="space-y-2 mt-3 text-sm font-mono text-slate-300 border-t border-slate-700 pt-3">
+                <div class="flex justify-between"><span class="text-slate-500">Status:</span> <span id="popupStatus" class="text-white">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Details:</span> <span id="popupDetails" class="text-white">--</span></div>
+            </div>
         </div>
 
     </main>
 
     <script>
-        // 1. Telemetry Data Structure (Mocking Intent-Driven Data)
-        const nodeData = {
-            'pe-1': { name: 'PE-Router 01', role: 'Provider Edge', status: 'Optimal', loss: '0.01%', latency: '2.1ms', throughput: '840 Gbps', isDegraded: false },
-            'spine-1': { name: 'Spine-01', role: 'Fabric Spine', status: 'Optimal', loss: '0.00%', latency: '0.8ms', throughput: '3.2 Tbps', isDegraded: false },
-            'spine-2': { name: 'Spine-02', role: 'Fabric Spine', status: 'Optimal', loss: '0.00%', latency: '0.9ms', throughput: '2.8 Tbps', isDegraded: false },
-            'leaf-1': { name: 'Leaf-01', role: 'Fabric Leaf', status: 'Optimal', loss: '0.02%', latency: '1.2ms', throughput: '400 Gbps', isDegraded: false },
-            'leaf-2': { name: 'Leaf-02', role: 'Fabric Leaf', status: 'Warning', loss: '1.50%', latency: '45ms', throughput: '380 Gbps', isDegraded: false },
-            'pe-2': { name: 'PE-Router 02', role: 'Provider Edge', status: 'Critical', loss: '18.4%', latency: '215ms', throughput: '45 Gbps', isDegraded: true }
-        };
+        // DOM Elements
+        const viewSetup = document.getElementById('view-setup');
+        const viewLoading = document.getElementById('view-loading');
+        const viewGraph = document.getElementById('view-graph');
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const generateBtn = document.getElementById('generateBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const simTitle = document.getElementById('simTitle');
+        const loadingSubtext = document.getElementById('loadingSubtext');
 
-        const tooltip = document.getElementById('telemetryTooltip');
-        const networkMap = document.getElementById('networkMap');
-        const activeTrace = document.getElementById('activeTrace');
-        const traceBtn = document.getElementById('traceBtn');
-        let hideTimeout;
+        // Logic to transition between views
+        function simulateLoading(sourceName) {
+            viewSetup.classList.add('view-hidden');
+            viewLoading.classList.remove('view-hidden');
+            simTitle.textContent = `Source: ${sourceName}`;
 
-        // 2. Hover Logic for Progressive Disclosure
-        document.querySelectorAll('.node').forEach(nodeEl => {
-            nodeEl.addEventListener('mouseenter', (e) => {
-                clearTimeout(hideTimeout);
-                const id = e.target.getAttribute('data-id');
-                const data = nodeData[id];
+            // Simulate parsing steps
+            setTimeout(() => loadingSubtext.textContent = "Analyzing IP headers...", 800);
+            setTimeout(() => loadingSubtext.textContent = "Computing topology map...", 1600);
 
-                // Populate Tooltip
-                document.getElementById('tt-name').textContent = data.name;
-                document.getElementById('tt-role').textContent = data.role;
-                document.getElementById('tt-loss').textContent = data.loss;
-                document.getElementById('tt-latency').textContent = data.latency;
-                document.getElementById('tt-throughput').textContent = data.throughput;
+            setTimeout(() => {
+                viewLoading.classList.add('view-hidden');
+                viewGraph.classList.remove('view-hidden');
+                loadingSubtext.textContent = "Extracting node connections"; // reset
+            }, 2500);
+        }
 
-                const badge = document.getElementById('tt-status-badge');
-                badge.textContent = data.status;
-                if(data.isDegraded) {
-                    badge.className = 'px-2 py-1 rounded text-xs font-bold bg-red-900 text-red-300';
-                    document.getElementById('tt-loss').classList.add('text-red-400');
-                    document.getElementById('tt-latency').classList.add('text-red-400');
-                    traceBtn.classList.remove('hidden');
+        // 1. Drag & Drop File Handling
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            let dt = e.dataTransfer;
+            let files = dt.files;
+            if (files.length > 0) {
+                simulateLoading(files[0].name);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                simulateLoading(e.target.files[0].name);
+            }
+        });
+
+        // 2. Manual Config Generation
+        generateBtn.addEventListener('click', () => {
+            simulateLoading('Manual Fabric Configuration');
+        });
+
+        // 3. Reset Simulation
+        resetBtn.addEventListener('click', () => {
+            viewGraph.classList.add('view-hidden');
+            viewSetup.classList.remove('view-hidden');
+            document.getElementById('nodePopup').classList.add('view-hidden');
+        });
+
+        // 4. Node Click Interaction for Popup
+        const nodes = document.querySelectorAll('.node-group');
+        const nodePopup = document.getElementById('nodePopup');
+        
+        nodes.forEach(node => {
+            node.addEventListener('click', () => {
+                const infoRaw = node.getAttribute('data-info').split(' | ');
+                document.getElementById('popupTitle').textContent = infoRaw[0];
+                
+                const statusEl = document.getElementById('popupStatus');
+                statusEl.textContent = infoRaw[1];
+                
+                // Colorize critical states
+                if(infoRaw[1] === 'CRITICAL') {
+                    nodePopup.style.borderTopColor = '#ef4444';
+                    statusEl.className = 'text-red-400 font-bold';
                 } else {
-                    badge.className = 'px-2 py-1 rounded text-xs font-bold bg-emerald-900 text-emerald-300';
-                    document.getElementById('tt-loss').classList.remove('text-red-400');
-                    document.getElementById('tt-latency').classList.remove('text-red-400');
-                    traceBtn.classList.add('hidden');
+                    nodePopup.style.borderTopColor = '#3b82f6';
+                    statusEl.className = 'text-emerald-400';
                 }
 
-                // Position Tooltip relative to the viewport (near the mouse)
-                const rect = e.target.getBoundingClientRect();
-                tooltip.style.left = `${rect.left + rect.width + 20}px`;
-                tooltip.style.top = `${rect.top - 50}px`;
-                
-                tooltip.classList.remove('hidden');
-                // Small delay for CSS transition
-                setTimeout(() => tooltip.classList.remove('opacity-0'), 10);
+                document.getElementById('popupDetails').textContent = infoRaw[2];
+                nodePopup.classList.remove('view-hidden');
             });
-
-            nodeEl.addEventListener('mouseleave', () => {
-                // Delay hiding so user can move mouse onto the tooltip if needed
-                hideTimeout = setTimeout(() => {
-                    tooltip.classList.add('opacity-0');
-                    setTimeout(() => tooltip.classList.add('hidden'), 200);
-                }, 300);
-            });
-        });
-
-        // Keep tooltip open if hovering over the tooltip itself
-        tooltip.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
-        tooltip.addEventListener('mouseleave', () => {
-            tooltip.classList.add('opacity-0');
-            setTimeout(() => tooltip.classList.add('hidden'), 200);
-        });
-
-        // 3. Visual Tracing State (On Click)
-        traceBtn.addEventListener('click', () => {
-            // Dim the background map
-            networkMap.classList.add('map-dimmed');
-            
-            // Hide the tooltip temporarily to focus on the animation
-            tooltip.classList.add('opacity-0');
-            
-            // Trigger the glowing line animation
-            activeTrace.classList.add('trace-active');
-            
-            // Optional: Reset button after 5 seconds to view it again
-            setTimeout(() => {
-                networkMap.classList.remove('map-dimmed');
-                activeTrace.classList.remove('trace-active');
-            }, 5000);
         });
     </script>
 </body>
