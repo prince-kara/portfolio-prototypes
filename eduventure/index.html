@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eduventure | Gamified Learning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            background-color: #e2e8f0; 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        /* Mobile Device Mockup Container */
+        .mobile-container {
+            width: 375px;
+            height: 812px;
+            background-color: #ffffff;
+            border-radius: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), inset 0 0 0 8px #0f172a;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* View Transitions */
+        .view {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s;
+        }
+        .view-hidden-right { transform: translateX(100%); opacity: 0; pointer-events: none; }
+        .view-hidden-left { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+        .view-active { transform: translateX(0); opacity: 1; pointer-events: auto; }
+
+        /* Micro-interactions */
+        .option-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .option-btn:active { transform: scale(0.96); }
+        
+        .success-state {
+            background-color: #10b981 !important; /* Success Green */
+            color: white !important;
+            border-color: #10b981 !important;
+            box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.5);
+            transform: scale(1.02);
+        }
+
+        /* Delight / Reward Animation */
+        @keyframes pop {
+            0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+            70% { transform: scale(1.3) rotate(15deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .animate-pop {
+            animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Leaderboard Animations (Simulating WebSockets) */
+        .rank-row { transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .slide-up { transform: translateY(calc(-100% - 16px)); z-index: 10; }
+        .slide-down { transform: translateY(calc(100% + 16px)); z-index: 5; }
+        
+        .score-update { animation: highlightScore 1s forwards; }
+        @keyframes highlightScore {
+            0% { color: #10b981; transform: scale(1.2); }
+            100% { color: #64748b; transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="mobile-container">
+        
+        <main id="quizView" class="view view-active bg-slate-50 p-6">
+            
+            <header class="mt-8 mb-8">
+                <div class="flex justify-between items-center mb-4">
+                    <button class="text-slate-400 hover:text-slate-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                    <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">Module 4</span>
+                    <div class="w-6 h-6"></div> </div>
+                <div class="w-full bg-slate-200 rounded-full h-2.5 mb-2">
+                    <div class="bg-blue-600 h-2.5 rounded-full" style="width: 75%"></div>
+                </div>
+                <p class="text-xs text-slate-500 font-medium text-right">3/4 Completed</p>
+            </header>
+
+            <div class="flex-grow">
+                <h2 class="text-2xl font-extrabold text-slate-800 mb-8 leading-tight">
+                    Which data structure uses LIFO (Last-In, First-Out)?
+                </h2>
+
+                <div class="space-y-4" id="optionsContainer">
+                    <button class="option-btn w-full text-left p-5 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-semibold shadow-sm hover:border-blue-400 focus:outline-none">
+                        A. Queue
+                    </button>
+                    <button id="correctAnswer" class="option-btn w-full text-left p-5 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-semibold shadow-sm hover:border-blue-400 focus:outline-none relative">
+                        B. Stack
+                        <div id="rewardStar" class="absolute right-4 top-1/2 -translate-y-1/2 hidden text-yellow-300 drop-shadow-md">
+                            <svg class="w-8 h-8 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                        </div>
+                    </button>
+                    <button class="option-btn w-full text-left p-5 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-semibold shadow-sm hover:border-blue-400 focus:outline-none">
+                        C. Linked List
+                    </button>
+                    <button class="option-btn w-full text-left p-5 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-semibold shadow-sm hover:border-blue-400 focus:outline-none">
+                        D. Array
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-auto pb-8 pt-4">
+                <button id="nextBtn" class="w-full bg-slate-200 text-slate-400 font-bold py-4 rounded-2xl cursor-not-allowed transition-colors" disabled>
+                    Check Answer
+                </button>
+            </div>
+        </main>
+
+        <main id="leaderboardView" class="view view-hidden-right bg-slate-900 p-6 flex flex-col">
+            
+            <header class="mt-10 mb-8 text-center">
+                <span class="inline-block px-3 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-wider rounded-full mb-3">Live Ranks</span>
+                <h2 class="text-3xl font-extrabold text-white">Global Leaderboard</h2>
+                <p class="text-slate-400 text-sm mt-2">Module 4 - Data Structures</p>
+            </header>
+
+            <div class="flex-grow relative">
+                
+                <div class="rank-row flex items-center bg-slate-800 p-4 rounded-2xl mb-4 border border-slate-700 shadow-lg">
+                    <span class="text-xl font-bold text-yellow-400 w-8">1</span>
+                    <div class="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold mr-4">AL</div>
+                    <div class="flex-grow">
+                        <h3 class="text-white font-bold">Alex Chen</h3>
+                    </div>
+                    <span class="text-slate-400 font-mono font-bold">4,200 XP</span>
+                </div>
+
+                <div id="competitorRow" class="rank-row flex items-center bg-slate-800 p-4 rounded-2xl mb-4 border border-slate-700 shadow-lg relative">
+                    <span id="competitorRank" class="text-xl font-bold text-slate-400 w-8">2</span>
+                    <div class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold mr-4">SJ</div>
+                    <div class="flex-grow">
+                        <h3 class="text-white font-bold">Sam Johnson</h3>
+                    </div>
+                    <span class="text-slate-400 font-mono font-bold">3,850 XP</span>
+                </div>
+
+                <div id="playerRow" class="rank-row flex items-center bg-blue-600 p-4 rounded-2xl mb-4 shadow-[0_0_20px_rgba(37,99,235,0.4)] relative">
+                    <span id="playerRank" class="text-xl font-bold text-blue-200 w-8">3</span>
+                    <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 font-bold mr-4">PK</div>
+                    <div class="flex-grow">
+                        <h3 class="text-white font-bold">Prince Karakura</h3>
+                        <p class="text-blue-200 text-xs font-medium">You</p>
+                    </div>
+                    <span id="playerScore" class="text-white font-mono font-bold">3,800 XP</span>
+                </div>
+
+            </div>
+
+            <div class="mt-auto pb-8 text-center flex justify-center items-center gap-2">
+                <span class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </span>
+                <span class="text-xs font-mono text-slate-500">WebSocket Connected (Live)</span>
+            </div>
+        </main>
+
+    </div>
+
+    <script>
+        const quizView = document.getElementById('quizView');
+        const leaderboardView = document.getElementById('leaderboardView');
+        const correctBtn = document.getElementById('correctAnswer');
+        const nextBtn = document.getElementById('nextBtn');
+        const rewardStar = document.getElementById('rewardStar');
+        
+        // Leaderboard Elements
+        const playerRow = document.getElementById('playerRow');
+        const competitorRow = document.getElementById('competitorRow');
+        const playerScore = document.getElementById('playerScore');
+        const playerRank = document.getElementById('playerRank');
+        const competitorRank = document.getElementById('competitorRank');
+
+        // --- INTERACTION LOGIC ---
+        correctBtn.addEventListener('click', () => {
+            // 1. Delight / Reward State
+            correctBtn.classList.add('success-state');
+            rewardStar.classList.remove('hidden');
+            rewardStar.classList.add('animate-pop');
+
+            // Update bottom button visually
+            nextBtn.textContent = "Excellent!";
+            nextBtn.classList.replace('bg-slate-200', 'bg-blue-600');
+            nextBtn.classList.replace('text-slate-400', 'text-white');
+
+            // Disable other buttons
+            document.querySelectorAll('.option-btn').forEach(btn => btn.style.pointerEvents = 'none');
+
+            // 2. Auto-transition to Leaderboard (After 1200ms delay)
+            setTimeout(() => {
+                quizView.classList.replace('view-active', 'view-hidden-left');
+                leaderboardView.classList.replace('view-hidden-right', 'view-active');
+                
+                // 3. Trigger WebSocket Real-Time Animation (After arriving on screen)
+                setTimeout(() => simulateWebSocketUpdate(), 800);
+            }, 1200);
+        });
+
+        // Simulates receiving a data payload from a WebSocket
+        function simulateWebSocketUpdate() {
+            // A. Update the score text with a flash
+            playerScore.textContent = "3,950 XP";
+            playerScore.classList.add('score-update');
+
+            // B. Apply CSS Transforms to physically swap the rows
+            playerRow.classList.add('slide-up');
+            competitorRow.classList.add('slide-down');
+
+            // C. Swap the rank numbers halfway through the animation
+            setTimeout(() => {
+                playerRank.textContent = "2";
+                competitorRank.textContent = "3";
+                
+                // Add a subtle pulse to the user's row to signify success
+                playerRow.classList.add('animate-pulse');
+                setTimeout(() => playerRow.classList.remove('animate-pulse'), 1000);
+            }, 400);
+        }
+    </script>
+</body>
+</html>
