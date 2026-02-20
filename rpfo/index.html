@@ -1,125 +1,139 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RPFO Heritage Archive Prototype</title>
+    <title>Portail des Archives - RPFO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Smooth transitions for the drawer and card filtering */
         .drawer-transition { transition: transform 0.3s ease-in-out; }
         .fade-in { animation: fadeIn 0.4s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        /* Soft, modern shadow for cards */
+        .card-shadow { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans overflow-x-hidden">
+<body class="bg-[#FAFAFA] text-gray-800 font-sans overflow-x-hidden">
 
-    <nav class="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-40">
-        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-            <h1 class="text-xl font-bold tracking-wide">RPFO Archive</h1>
-            
-            <div class="flex w-full md:w-auto gap-2">
-                <input type="text" id="searchInput" placeholder="Search 8,000+ records..." 
-                       class="w-full md:w-80 px-4 py-2 rounded text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <button id="quickSearchBtn" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded font-semibold shadow transition-colors">
-                    Quick Search
-                </button>
-                <button id="openFilterBtn" class="bg-blue-800 hover:bg-blue-900 px-4 py-2 border border-blue-400 rounded font-semibold transition-colors">
-                    Advanced Filter
-                </button>
+    <nav class="bg-white border-b border-gray-200 py-4 px-6 sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">R</div>
+                <h1 class="text-xl font-semibold tracking-tight text-gray-900">RPFO <span class="text-gray-400 font-normal">| Archives</span></h1>
             </div>
+            <button id="navFilterBtn" class="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
+                Filtres avancés
+            </button>
         </div>
     </nav>
 
-    <main class="max-w-6xl mx-auto p-6 min-h-screen">
-        <div class="mb-6 flex justify-between items-end">
-            <div>
-                <h2 class="text-2xl font-bold text-gray-900">Heritage Records</h2>
-                <p class="text-gray-500 text-sm mt-1" id="resultCount">Showing all records</p>
-            </div>
+    <header class="max-w-4xl mx-auto mt-16 mb-12 px-6 text-center">
+        <h2 class="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 tracking-tight">Découvrez notre héritage.</h2>
+        <p class="text-lg text-gray-500 mb-8">Recherchez à travers les éditions de <i>Le Chaînon</i> et plus de 8 000 documents historiques.</p>
+        
+        <div class="relative w-full shadow-lg rounded-full flex items-center bg-white border border-gray-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all overflow-hidden p-1">
+            <svg class="w-6 h-6 text-gray-400 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <input type="text" id="searchInput" placeholder="Chercher un thème, une date ou une édition..." 
+                   class="w-full px-4 py-4 text-gray-900 bg-transparent focus:outline-none text-lg">
+            <button id="quickSearchBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-semibold transition-colors mr-1">
+                Rechercher
+            </button>
+        </div>
+        <div class="mt-4 flex justify-center gap-4 text-sm">
+            <button id="openFilterBtn" class="text-blue-600 font-medium hover:underline">Utiliser les filtres avancés</button>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 pb-20">
+        <div class="mb-6 border-b border-gray-200 pb-2">
+            <p class="text-gray-500 text-sm font-medium" id="resultCount">Affichage de tous les résultats</p>
         </div>
 
-        <div id="cardGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div id="cardGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             </div>
     </main>
 
-    <div id="filterDrawer" class="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-50 transform translate-x-full drawer-transition p-6 border-l border-gray-200">
-        <div class="flex justify-between items-center mb-6">
-            <h3 class="text-lg font-bold text-gray-900">Advanced Filters</h3>
-            <button id="closeFilterBtn" class="text-gray-500 hover:text-red-500 font-bold text-xl">&times;</button>
+    <div id="filterDrawer" class="fixed inset-y-0 right-0 w-full md:w-96 bg-white shadow-2xl z-50 transform translate-x-full drawer-transition p-8 border-l border-gray-200 flex flex-col">
+        <div class="flex justify-between items-center mb-8">
+            <h3 class="text-2xl font-bold text-gray-900">Filtres</h3>
+            <button id="closeFilterBtn" class="text-gray-400 hover:text-gray-800 transition-colors">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
         </div>
         
-        <div class="space-y-6">
+        <div class="space-y-8 flex-grow">
             <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Era</label>
-                <select class="w-full border border-gray-300 rounded p-2 bg-gray-50">
-                    <option>All Eras</option>
-                    <option>Pre-1900</option>
-                    <option>1900 - 1950</option>
-                    <option>1951 - Present</option>
+                <label class="block text-sm font-semibold text-gray-900 mb-3">Période</label>
+                <select class="w-full border border-gray-300 rounded-lg p-3 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option>Toutes les années</option>
+                    <option>2020 - Présent</option>
+                    <option>2010 - 2019</option>
+                    <option>Avant 2010</option>
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Record Type</label>
-                <div class="space-y-2">
-                    <label class="flex items-center"><input type="checkbox" class="mr-2" checked> Photographs</label>
-                    <label class="flex items-center"><input type="checkbox" class="mr-2" checked> Manuscripts</label>
-                    <label class="flex items-center"><input type="checkbox" class="mr-2"> Audio Recordings</label>
+                <label class="block text-sm font-semibold text-gray-900 mb-3">Type de document</label>
+                <div class="space-y-3">
+                    <label class="flex items-center text-gray-700 cursor-pointer"><input type="checkbox" class="mr-3 w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked> Revue (Le Chaînon)</label>
+                    <label class="flex items-center text-gray-700 cursor-pointer"><input type="checkbox" class="mr-3 w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked> Manuscrits</label>
+                    <label class="flex items-center text-gray-700 cursor-pointer"><input type="checkbox" class="mr-3 w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> Photographies</label>
                 </div>
             </div>
-            <button class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded mt-4">
-                Apply Filters
-            </button>
         </div>
+        <button id="applyFiltersBtn" class="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl mt-4 transition-colors">
+            Appliquer les filtres
+        </button>
     </div>
 
-    <div id="drawerOverlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden transition-opacity"></div>
+    <div id="drawerOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-40 z-40 hidden transition-opacity backdrop-blur-sm"></div>
 
     <script>
-        // 1. Mock Database representing the legacy data
+        // Mock Database: RPFO 'Le Chaînon' Editions
         const database = [
-            { id: 1, title: "L'Orignal Parish Records", year: "1885", type: "Manuscript", desc: "Handwritten census records from the early settlement of L'Orignal.", tags: ["Census", "Settlement"] },
-            { id: 2, title: "Sudbury Mining Strike", year: "1940", type: "Photograph", desc: "Archival imagery of the local miner's union strike.", tags: ["Labor", "Industrial"] },
-            { id: 3, title: "Franco-Ontarian Flag Raising", year: "1975", type: "Photograph", desc: "First official raising of the Franco-Ontarian flag at Laurentian University.", tags: ["Culture", "Education"] },
-            { id: 4, title: "Ottawa Valley Oral Histories", year: "1982", type: "Audio", desc: "Interviews with elders discussing the timber trade.", tags: ["Trade", "Folklore"] },
-            { id: 5, title: "St. Jean Baptiste Society Minutes", year: "1912", type: "Manuscript", desc: "Meeting minutes detailing community organizing efforts.", tags: ["Community", "Politics"] }
+            { id: 1, title: "Le Chaînon - Printemps 2024", year: "2024", type: "Revue", desc: "Thème principal : L'éducation en français en Ontario. Retracez l'histoire de nos écoles et les luttes pour nos droits éducatifs.", tags: ["Éducation", "Histoire"] },
+            { id: 2, title: "Le Chaînon - Hiver 2023", year: "2023", type: "Revue", desc: "Thème principal : Généalogie et racines. Outils et histoires pour retracer vos ancêtres franco-ontariens dans le Nord.", tags: ["Généalogie", "Nord"] },
+            { id: 3, title: "Le Chaînon - Automne 2023", year: "2023", type: "Revue", desc: "Thème principal : Arts et culture. Une célébration des artistes, musiciens et poètes qui façonnent notre identité.", tags: ["Arts", "Culture"] },
+            { id: 4, title: "Lettres de la famille Lanthier", year: "1942", type: "Manuscrit", desc: "Correspondance originale d'une famille de bûcherons travaillant dans la région de l'Outaouais.", tags: ["Archives", "Correspondance"] },
+            { id: 5, title: "Le Chaînon - Été 2023", year: "2023", type: "Revue", desc: "Thème principal : Les pionniers du Nord de l'Ontario. Histoires de courage et de persévérance lors du développement minier.", tags: ["Pionniers", "Mines"] },
+            { id: 6, title: "Le Chaînon - Printemps 2023", year: "2023", type: "Revue", desc: "Thème principal : Les festivals historiques. De la Saint-Jean-Baptiste au Festival Franco-Ontarien.", tags: ["Festivals", "Communauté"] }
         ];
 
         const cardGrid = document.getElementById('cardGrid');
         const resultCount = document.getElementById('resultCount');
 
-        // 2. Function to Render Cards (The Core UX Improvement)
+        // Render Cards with Modern UI
         function renderCards(data) {
             cardGrid.innerHTML = '';
             if(data.length === 0) {
-                cardGrid.innerHTML = '<p class="text-gray-500 italic col-span-full">No records found. Try adjusting your search.</p>';
+                cardGrid.innerHTML = '<div class="col-span-full py-12 text-center text-gray-500 bg-white rounded-2xl border border-gray-200">Aucun document trouvé. Essayez de modifier votre recherche.</div>';
             }
-            data.forEach(item => {
+            data.forEach((item, index) => {
                 const card = document.createElement('div');
-                card.className = 'bg-white rounded-lg shadow border border-gray-100 p-5 hover:shadow-lg transition-shadow fade-in flex flex-col justify-between';
+                // Staggered animation delay for polished feel
+                card.style.animationDelay = `${index * 0.05}s`;
+                card.className = 'bg-white rounded-2xl p-6 border border-gray-100 card-shadow hover:-translate-y-1 transition-transform duration-300 fade-in flex flex-col justify-between cursor-pointer group';
                 card.innerHTML = `
                     <div>
-                        <div class="flex justify-between items-start mb-2">
-                            <span class="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-1 rounded">${item.type}</span>
-                            <span class="text-sm font-semibold text-gray-500">${item.year}</span>
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-3 py-1 rounded-full">${item.type}</span>
+                            <span class="text-sm font-medium text-gray-400">${item.year}</span>
                         </div>
-                        <h3 class="text-lg font-bold text-gray-900 mb-2 leading-tight">${item.title}</h3>
-                        <p class="text-sm text-gray-600 mb-4 line-clamp-3">${item.desc}</p>
+                        <h3 class="text-xl font-bold text-gray-900 mb-3 leading-tight group-hover:text-blue-600 transition-colors">${item.title}</h3>
+                        <p class="text-base text-gray-600 mb-6 line-clamp-3 leading-relaxed">${item.desc}</p>
                     </div>
                     <div class="flex flex-wrap gap-2 mt-auto">
-                        ${item.tags.map(tag => `<span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">#${tag}</span>`).join('')}
+                        ${item.tags.map(tag => `<span class="text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">${tag}</span>`).join('')}
                     </div>
                 `;
                 cardGrid.appendChild(card);
             });
-            resultCount.innerText = `Showing ${data.length} record(s)`;
+            resultCount.innerText = `Affichage de ${data.length} résultat(s)`;
         }
 
-        // Initialize default view
         renderCards(database);
 
-        // 3. Quick Search Implementation
-        document.getElementById('quickSearchBtn').addEventListener('click', () => {
+        // Quick Search Logic
+        function executeSearch() {
             const query = document.getElementById('searchInput').value.toLowerCase();
             const filteredData = database.filter(item => 
                 item.title.toLowerCase().includes(query) || 
@@ -127,9 +141,14 @@
                 item.tags.some(tag => tag.toLowerCase().includes(query))
             );
             renderCards(filteredData);
+        }
+
+        document.getElementById('quickSearchBtn').addEventListener('click', executeSearch);
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') executeSearch();
         });
 
-        // 4. Drawer Logic
+        // Drawer Logic
         const filterDrawer = document.getElementById('filterDrawer');
         const drawerOverlay = document.getElementById('drawerOverlay');
 
@@ -139,7 +158,9 @@
         }
 
         document.getElementById('openFilterBtn').addEventListener('click', toggleDrawer);
+        document.getElementById('navFilterBtn').addEventListener('click', toggleDrawer);
         document.getElementById('closeFilterBtn').addEventListener('click', toggleDrawer);
+        document.getElementById('applyFiltersBtn').addEventListener('click', toggleDrawer); // Close on apply
         drawerOverlay.addEventListener('click', toggleDrawer);
     </script>
 </body>
