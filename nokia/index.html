@@ -6,17 +6,12 @@
     <title>Packet Visualization Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Enforce strict layout constraints to prevent scrollbars */
         body { 
             background-color: #0b1120; 
             color: #f8fafc; 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            margin: 0;
-            padding: 0;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-            user-select: none;
+            overflow-x: hidden;
+            user-select: none; /* Prevent text selection while dragging */
         }
 
         /* View Transitions */
@@ -36,9 +31,10 @@
         .node-group:hover .node-bg { filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)); }
         
         .healthy .node-bg { fill: #064e3b; stroke: #10b981; stroke-width: 2; }
-        .critical .node-bg { fill: #7f1d1d; stroke: #ef4444; stroke-width: 2; animation: pulse-node 2s infinite; }
-        @keyframes pulse-node { 0% { filter: drop-shadow(0 0 2px #ef4444); } 50% { filter: drop-shadow(0 0 12px #ef4444); } 100% { filter: drop-shadow(0 0 2px #ef4444); } }
+        .critical .node-bg { fill: #7f1d1d; stroke: #ef4444; stroke-width: 2; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { filter: drop-shadow(0 0 2px #ef4444); } 50% { filter: drop-shadow(0 0 12px #ef4444); } 100% { filter: drop-shadow(0 0 2px #ef4444); } }
 
+        /* Make links easier to click with a thicker transparent hit area */
         .link-hitbox { stroke: transparent; stroke-width: 15; cursor: pointer; }
         .link-visible { stroke: #334155; stroke-width: 3; transition: stroke 0.3s; pointer-events: none; }
         
@@ -50,12 +46,14 @@
         .bandwidth-bg { fill: #0b1120; pointer-events: none; }
         .bandwidth-critical { fill: #fca5a5; font-weight: bold; }
 
+        /* Glass Panel Popup */
         .glass-panel {
             background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        /* Info Tooltip */
         .info-tooltip {
             visibility: hidden; opacity: 0; transition: opacity 0.2s;
             background-color: #1e293b; color: #cbd5e1; text-align: center; border-radius: 6px;
@@ -64,33 +62,24 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
         }
         .info-container:hover .info-tooltip { visibility: visible; opacity: 1; }
-
-        /* Ticker Animation */
-        @keyframes scrollTicker {
-            0% { transform: translateX(100%); }
-            100% { transform: translateX(-100%); }
-        }
-        .ticker-animate {
-            display: inline-block;
-            white-space: nowrap;
-            animation: scrollTicker 15s linear infinite;
-            padding-left: 100%; /* Ensure it starts fully off-screen */
-        }
-        /* Pause ticker on hover so users can read long text easily */
-        #tickerContainer:hover .ticker-animate {
-            animation-play-state: paused;
-        }
+        
+        /* Custom Scrollbar for Popup */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
-<body class="flex flex-col">
+<body class="min-h-screen flex flex-col relative">
 
-    <main id="view-setup" class="flex-grow flex flex-col items-center justify-center p-6 fade-in h-full overflow-y-auto">
-        <div class="text-center mb-10 mt-10">
+    <main id="view-setup" class="flex-grow flex flex-col items-center justify-center p-6 fade-in">
+        
+        <div class="text-center mb-10">
             <h1 class="text-4xl font-extrabold tracking-tight text-white mb-2">Packet Visualization Tool</h1>
             <p class="text-slate-400">Ingest .pcap files or simulate network topologies for SR-TE analysis.</p>
         </div>
 
-        <div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+        <div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="glass-panel p-8 rounded-xl flex flex-col items-center justify-center text-center drop-zone" id="dropZone">
                 <svg class="w-16 h-16 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                 <h2 class="text-xl font-bold text-white mb-2">Upload Packet Capture</h2>
@@ -102,10 +91,11 @@
             </div>
 
             <div class="glass-panel p-8 rounded-xl flex flex-col justify-center relative">
+                
                 <div class="absolute top-6 right-6 info-container cursor-help">
                     <svg class="w-6 h-6 text-slate-400 hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <div class="info-tooltip">
-                        <strong>Prototype Mode:</strong> These fields are for UI demonstration only. The visualization will load a static topology regardless of these values.
+                        <strong>Prototype Mode:</strong> These configuration fields are for UI demonstration only. The resulting visualization will load a static, pre-defined topology regardless of the values selected here.
                     </div>
                 </div>
 
@@ -145,37 +135,39 @@
         <p class="text-slate-500 text-sm mt-2 font-mono" id="loadingSubtext">Extracting node connections</p>
     </div>
 
-    <main id="view-graph" class="h-full flex flex-col relative view-hidden fade-in overflow-hidden">
+    <main id="view-graph" class="flex-grow flex flex-col relative view-hidden fade-in">
         
-        <header class="h-20 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 shrink-0">
-            <div class="w-1/4">
+        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50">
+            <div>
                 <h1 class="text-lg font-bold text-white tracking-wide">ACTIVE TOPOLOGY</h1>
                 <p class="text-xs text-slate-400 font-mono" id="simTitle">Source: Manual Configuration</p>
             </div>
-
-            <div class="flex-grow mx-6 h-10 bg-slate-950 border border-slate-800 rounded flex items-center overflow-hidden shadow-inner relative" id="tickerContainer">
-                <div class="absolute w-full h-full flex items-center overflow-hidden cursor-default">
-                    <div id="tickerText" class="ticker-animate font-mono text-sm tracking-widest text-slate-500">
-                        Awaiting input... Select a node or link to view live telemetry data.
-                    </div>
-                </div>
-                <div class="absolute left-0 w-8 h-full bg-gradient-to-r from-slate-950 to-transparent z-10"></div>
-                <div class="absolute right-0 w-8 h-full bg-gradient-to-l from-slate-950 to-transparent z-10"></div>
-            </div>
-
-            <div class="w-1/4 flex justify-end">
-                <button id="resetBtn" class="text-sm text-slate-400 hover:text-white border border-slate-700 px-4 py-2 rounded transition-colors bg-slate-800 hover:bg-slate-700">
-                    ← New Simulation
-                </button>
-            </div>
+            <button id="resetBtn" class="text-sm text-slate-400 hover:text-white border border-slate-700 px-3 py-1 rounded transition-colors">
+                ← New Simulation
+            </button>
         </header>
 
-        <div class="flex-grow relative overflow-hidden bg-[#0b1120]" id="canvasContainer">
-            <svg viewBox="0 0 1000 600" class="w-full h-full" id="networkMap" preserveAspectRatio="xMidYMid meet">
+        <div class="flex-grow relative overflow-hidden" id="canvasContainer">
+            <svg viewBox="0 0 1000 600" class="w-full h-full" id="networkMap">
                 <g id="linksLayer"></g>
                 <g id="nodesLayer"></g>
             </svg>
         </div>
+
+        <div id="detailPopup" class="fixed bottom-8 right-8 w-80 max-h-96 overflow-y-auto glass-panel rounded-lg p-5 view-hidden fade-in z-50 shadow-2xl transition-all">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider" id="popupTitle">Detail</h3>
+                <button id="closePopupBtn" class="text-slate-500 hover:text-white">&times;</button>
+            </div>
+            <div class="space-y-2 mt-2 text-sm font-mono text-slate-300 border-t border-slate-700 pt-3">
+                <div class="flex justify-between"><span class="text-slate-500">Status:</span> <span id="popupStatus" class="text-white">--</span></div>
+                <div class="flex flex-col mt-2">
+                    <span class="text-slate-500 mb-1">Details/Reason:</span> 
+                    <span id="popupDetails" class="text-white leading-relaxed">--</span>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <script>
@@ -198,7 +190,7 @@
                 viewLoading.classList.add('view-hidden');
                 viewGraph.classList.remove('view-hidden');
                 document.getElementById('loadingSubtext').textContent = "Extracting node connections"; 
-                initGraph(); 
+                initGraph(); // Initialize the draggable canvas
             }, 2500);
         }
 
@@ -218,26 +210,12 @@
         document.getElementById('resetBtn').addEventListener('click', () => {
             viewGraph.classList.add('view-hidden');
             viewSetup.classList.remove('view-hidden');
-            // Reset Ticker
-            updateTicker('SYSTEM', 'STANDBY', 'Awaiting input... Select a node or link to view live telemetry data.', false);
+            document.getElementById('detailPopup').classList.add('view-hidden');
         });
 
-        // --- TICKER LOGIC ---
-        function updateTicker(title, status, details, isCritical) {
-            const ticker = document.getElementById('tickerText');
-            
-            // Remove animation class to reset it
-            ticker.classList.remove('ticker-animate');
-            void ticker.offsetWidth; // Trigger reflow
-            
-            const colorClass = isCritical ? 'text-red-400 font-bold' : 'text-emerald-400';
-            ticker.innerHTML = `<span class="text-blue-400">[${title.toUpperCase()}]</span> <span class="${colorClass}">STATUS: ${status}</span> <span class="text-slate-500 px-2">||</span> <span class="text-slate-300">${details}</span>`;
-            
-            // Re-apply animation
-            ticker.classList.add('ticker-animate');
-        }
-
-        // --- 2. DYNAMIC GRAPH LOGIC ---
+        // --- 2. DYNAMIC GRAPH LOGIC (SPIDER WEB DRAGGING) ---
+        
+        // Data Models
         const nodesData = [
             { id: 's1', type: 'rect', label: 'SPINE-1', x: 300, y: 150, status: 'healthy', info: 'Up | Load: 45%' },
             { id: 's2', type: 'rect', label: 'SPINE-2', x: 700, y: 150, status: 'healthy', info: 'Up | Load: 30%' },
@@ -261,21 +239,25 @@
         const svg = document.getElementById('networkMap');
         const nodesLayer = document.getElementById('nodesLayer');
         const linksLayer = document.getElementById('linksLayer');
+        const detailPopup = document.getElementById('detailPopup');
         let draggedNode = null;
         let graphInitialized = false;
 
         function initGraph() {
-            if(graphInitialized) return; 
+            if(graphInitialized) return; // Prevent double rendering
             
+            // Render Links
             linksData.forEach(link => {
                 const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
                 g.setAttribute('class', `link-group link-${link.type}`);
                 g.id = `g-${link.id}`;
 
+                // Invisible wide hitbox for easier clicking
                 const hitbox = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 hitbox.setAttribute('class', 'link-hitbox');
                 hitbox.id = `hitbox-${link.id}`;
                 
+                // Visible line
                 const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 line.setAttribute('class', 'link-visible');
                 line.id = `line-${link.id}`;
@@ -283,6 +265,7 @@
                 g.appendChild(hitbox);
                 g.appendChild(line);
 
+                // Add Bandwidth Label if exists
                 if(link.bw) {
                     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     rect.setAttribute('class', 'bandwidth-bg');
@@ -299,16 +282,28 @@
                     g.appendChild(text);
                 }
 
-                // Ticker update on link click
+                // Link Click Event for Popup
                 hitbox.addEventListener('click', () => {
-                    const isCrit = link.type === 'critical';
-                    const details = isCrit ? link.error : `Current Bandwidth: ${link.bw || 'Idle'}. No errors detected.`;
-                    updateTicker(`LINK: ${link.source} ↔ ${link.target}`, link.type, details, isCrit);
+                    document.getElementById('popupTitle').textContent = `Link Interaction`;
+                    const statusEl = document.getElementById('popupStatus');
+                    statusEl.textContent = link.type.toUpperCase();
+                    
+                    if(link.type === 'critical') {
+                        detailPopup.style.borderTopColor = '#ef4444';
+                        statusEl.className = 'text-red-400 font-bold';
+                        document.getElementById('popupDetails').textContent = link.error || "Link down. Check physical connectivity.";
+                    } else {
+                        detailPopup.style.borderTopColor = '#3b82f6';
+                        statusEl.className = 'text-emerald-400';
+                        document.getElementById('popupDetails').textContent = `Current Bandwidth: ${link.bw || 'Idle'}. No errors detected.`;
+                    }
+                    detailPopup.classList.remove('view-hidden');
                 });
 
                 linksLayer.appendChild(g);
             });
 
+            // Render Nodes
             nodesData.forEach(node => {
                 const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
                 g.setAttribute('class', `node-group ${node.status}`);
@@ -337,15 +332,32 @@
                 text.textContent = node.label;
                 g.appendChild(text);
 
-                // Ticker update on node click
+                // Node Click Event for Popup
                 g.addEventListener('click', (e) => {
+                    // Prevent drag release from firing click
                     if(e.defaultPrevented) return; 
+                    
+                    document.getElementById('popupTitle').textContent = `Node: ${node.label}`;
+                    const statusEl = document.getElementById('popupStatus');
                     const infoParts = node.info.split(' | ');
-                    const isCrit = node.status === 'critical';
-                    updateTicker(`NODE: ${node.label}`, infoParts[0], infoParts[1], isCrit);
+                    statusEl.textContent = infoParts[0];
+                    
+                    if(node.status === 'critical') {
+                        detailPopup.style.borderTopColor = '#ef4444';
+                        statusEl.className = 'text-red-400 font-bold';
+                    } else {
+                        detailPopup.style.borderTopColor = '#10b981';
+                        statusEl.className = 'text-emerald-400';
+                    }
+                    document.getElementById('popupDetails').textContent = infoParts[1];
+                    detailPopup.classList.remove('view-hidden');
                 });
 
-                g.addEventListener('mousedown', (e) => { draggedNode = node; });
+                // Drag Events
+                g.addEventListener('mousedown', (e) => {
+                    draggedNode = node;
+                });
+
                 nodesLayer.appendChild(g);
             });
 
@@ -353,14 +365,23 @@
             graphInitialized = true;
         }
 
+        // Handle popup closing
+        document.getElementById('closePopupBtn').addEventListener('click', () => {
+            detailPopup.classList.add('view-hidden');
+        });
+
+        // Math mapping to SVG coordinate space
         function getMousePosition(evt) {
             const CTM = svg.getScreenCTM();
-            return { x: (evt.clientX - CTM.e) / CTM.a, y: (evt.clientY - CTM.f) / CTM.d };
+            return {
+                x: (evt.clientX - CTM.e) / CTM.a,
+                y: (evt.clientY - CTM.f) / CTM.d
+            };
         }
 
         svg.addEventListener('mousemove', (e) => {
             if (draggedNode) {
-                e.preventDefault(); 
+                e.preventDefault(); // Stop text selection
                 const pos = getMousePosition(e);
                 draggedNode.x = pos.x;
                 draggedNode.y = pos.y;
@@ -372,11 +393,13 @@
         svg.addEventListener('mouseleave', () => { draggedNode = null; });
 
         function updatePositions() {
+            // Update Nodes
             nodesData.forEach(node => {
                 const g = document.getElementById(`node-${node.id}`);
                 g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
             });
 
+            // Update Links (Spider web effect)
             linksData.forEach(link => {
                 const source = nodesData.find(n => n.id === link.source);
                 const target = nodesData.find(n => n.id === link.target);
@@ -390,6 +413,7 @@
                 hitbox.setAttribute('x1', source.x); hitbox.setAttribute('y1', source.y);
                 hitbox.setAttribute('x2', target.x); hitbox.setAttribute('y2', target.y);
 
+                // Update Bandwidth Label Math (midpoint)
                 if(link.bw) {
                     const midX = (source.x + target.x) / 2;
                     const midY = (source.y + target.y) / 2;
@@ -399,7 +423,7 @@
                     text.setAttribute('y', midY + 4);
                     
                     const bg = document.getElementById(`bg-${link.id}`);
-                    const textWidth = link.type === 'critical' ? 70 : 60; 
+                    const textWidth = link.type === 'critical' ? 70 : 60; // Approximate widths
                     bg.setAttribute('x', midX - (textWidth/2));
                     bg.setAttribute('y', midY - 10);
                     bg.setAttribute('width', textWidth);
