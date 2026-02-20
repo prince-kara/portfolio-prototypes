@@ -46,7 +46,7 @@
         .bandwidth-bg { fill: #0b1120; pointer-events: none; }
         .bandwidth-critical { fill: #fca5a5; font-weight: bold; }
 
-        /* Glass Panel Popup */
+        /* Glass Panel Styling */
         .glass-panel {
             background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(12px);
@@ -62,12 +62,12 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
         }
         .info-container:hover .info-tooltip { visibility: visible; opacity: 1; }
-        
-        /* Custom Scrollbar for Popup */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Gradient mask for smooth text disappearance on the edges */
+        .ticker-mask {
+            -webkit-mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent);
+            mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent);
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col relative">
@@ -137,12 +137,20 @@
 
     <main id="view-graph" class="flex-grow flex flex-col relative view-hidden fade-in">
         
-        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50">
-            <div>
+        <header class="min-h-16 py-3 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50">
+            <div class="flex-shrink-0">
                 <h1 class="text-lg font-bold text-white tracking-wide">ACTIVE TOPOLOGY</h1>
                 <p class="text-xs text-slate-400 font-mono" id="simTitle">Source: Manual Configuration</p>
             </div>
-            <button id="resetBtn" class="text-sm text-slate-400 hover:text-white border border-slate-700 px-3 py-1 rounded transition-colors">
+            
+            <div id="tickerContainer" class="hidden flex-grow mx-8 bg-slate-800/80 border border-slate-700/50 rounded-lg px-4 py-2 relative flex items-center shadow-inner h-10">
+                <div class="w-full overflow-hidden ticker-mask">
+                    <div id="tickerText" class="whitespace-nowrap font-mono text-sm inline-block">
+                        </div>
+                </div>
+            </div>
+
+            <button id="resetBtn" class="flex-shrink-0 text-sm text-slate-400 hover:text-white border border-slate-700 px-3 py-1 rounded transition-colors">
                 ← New Simulation
             </button>
         </header>
@@ -152,20 +160,6 @@
                 <g id="linksLayer"></g>
                 <g id="nodesLayer"></g>
             </svg>
-        </div>
-
-        <div id="detailPopup" class="fixed bottom-8 right-8 w-80 max-h-96 overflow-y-auto glass-panel rounded-lg p-5 view-hidden fade-in z-50 shadow-2xl transition-all">
-            <div class="flex justify-between items-start mb-2">
-                <h3 class="text-sm font-bold text-white uppercase tracking-wider" id="popupTitle">Detail</h3>
-                <button id="closePopupBtn" class="text-slate-500 hover:text-white">&times;</button>
-            </div>
-            <div class="space-y-2 mt-2 text-sm font-mono text-slate-300 border-t border-slate-700 pt-3">
-                <div class="flex justify-between"><span class="text-slate-500">Status:</span> <span id="popupStatus" class="text-white">--</span></div>
-                <div class="flex flex-col mt-2">
-                    <span class="text-slate-500 mb-1">Details/Reason:</span> 
-                    <span id="popupDetails" class="text-white leading-relaxed">--</span>
-                </div>
-            </div>
         </div>
 
     </main>
@@ -210,8 +204,71 @@
         document.getElementById('resetBtn').addEventListener('click', () => {
             viewGraph.classList.add('view-hidden');
             viewSetup.classList.remove('view-hidden');
-            document.getElementById('detailPopup').classList.add('view-hidden');
+            document.getElementById('tickerContainer').classList.add('hidden'); // Hide ticker on reset
         });
+
+        // --- TICKER ANIMATION LOGIC ---
+        let tickerTimer;
+        let tickerPhaseTimer;
+
+        function showTickerInfo(htmlContent) {
+            const tickerContainer = document.getElementById('tickerContainer');
+            const tickerText = document.getElementById('tickerText');
+            
+            tickerContainer.classList.remove('hidden');
+            tickerText.innerHTML = htmlContent;
+            
+            // Clear any currently running animations
+            clearTimeout(tickerTimer);
+            clearTimeout(tickerPhaseTimer);
+            
+            // Instantly reset the scroll position so it shows immediately
+            tickerText.style.transition = 'none';
+            tickerText.style.transform = 'translateX(0)';
+            
+            // Wait a tick for the DOM to update to get correct widths
+            setTimeout(() => {
+                // Determine if we need to scroll (if text is wider than container mask)
+                const cWidth = tickerContainer.offsetWidth - 32; // subtracting padding
+                const tWidth = tickerText.scrollWidth;
+                
+                if (tWidth > cWidth) {
+                    runTickerLoop(cWidth, tWidth);
+                }
+            }, 10);
+        }
+
+        function runTickerLoop(containerWidth, textWidth) {
+            const tickerText = document.getElementById('tickerText');
+            const distance = textWidth - containerWidth + 20; // Extra pixels to ensure it clears the frame
+            const duration = distance / 60; // 60px per second reading speed
+            
+            function cycle() {
+                // 1. Initial 1s pause while the text sits at 0 (Shows immediately)
+                tickerPhaseTimer = setTimeout(() => {
+                    
+                    // 2. Animate and scroll all the way left
+                    tickerText.style.transition = `transform ${duration}s linear`;
+                    tickerText.style.transform = `translateX(-${distance}px)`;
+                    
+                    // 3. Wait for animation to finish, plus the 1s break
+                    tickerPhaseTimer = setTimeout(() => {
+                        
+                        // 4. Snap back to the start instantly
+                        tickerText.style.transition = 'none';
+                        tickerText.style.transform = 'translateX(0)';
+                        
+                        // 5. Restart the cycle instantly (cycle will wait 1s before moving again)
+                        tickerTimer = setTimeout(cycle, 50);
+
+                    }, (duration * 1000) + 1000); 
+
+                }, 1000);
+            }
+            
+            cycle(); // Kick off the loop
+        }
+
 
         // --- 2. DYNAMIC GRAPH LOGIC (SPIDER WEB DRAGGING) ---
         
@@ -239,7 +296,6 @@
         const svg = document.getElementById('networkMap');
         const nodesLayer = document.getElementById('nodesLayer');
         const linksLayer = document.getElementById('linksLayer');
-        const detailPopup = document.getElementById('detailPopup');
         let draggedNode = null;
         let graphInitialized = false;
 
@@ -282,22 +338,16 @@
                     g.appendChild(text);
                 }
 
-                // Link Click Event for Popup
+                // Link Click Event - Push to header ticker
                 hitbox.addEventListener('click', () => {
-                    document.getElementById('popupTitle').textContent = `Link Interaction`;
-                    const statusEl = document.getElementById('popupStatus');
-                    statusEl.textContent = link.type.toUpperCase();
+                    const statusClass = link.type === 'critical' ? 'text-red-400 font-bold' : 'text-emerald-400';
+                    const detailText = link.type === 'critical' ? link.error : `Current Bandwidth: ${link.bw || 'Idle'}. No errors detected.`;
                     
-                    if(link.type === 'critical') {
-                        detailPopup.style.borderTopColor = '#ef4444';
-                        statusEl.className = 'text-red-400 font-bold';
-                        document.getElementById('popupDetails').textContent = link.error || "Link down. Check physical connectivity.";
-                    } else {
-                        detailPopup.style.borderTopColor = '#3b82f6';
-                        statusEl.className = 'text-emerald-400';
-                        document.getElementById('popupDetails').textContent = `Current Bandwidth: ${link.bw || 'Idle'}. No errors detected.`;
-                    }
-                    detailPopup.classList.remove('view-hidden');
+                    const html = `<span class="text-slate-500 font-bold mr-2 border-r border-slate-600 pr-2">LINK EVENT</span> 
+                                  <span class="text-slate-400">Status:</span> <span class="${statusClass} mr-4">${link.type.toUpperCase()}</span> 
+                                  <span class="text-slate-400">Details/Reason:</span> <span class="text-white">${detailText}</span>`;
+                    
+                    showTickerInfo(html);
                 });
 
                 linksLayer.appendChild(g);
@@ -332,31 +382,22 @@
                 text.textContent = node.label;
                 g.appendChild(text);
 
-                // Node Click Event for Popup
+                // Node Click Event - Push to header ticker
                 g.addEventListener('click', (e) => {
-                    // Prevent drag release from firing click
-                    if(e.defaultPrevented) return; 
+                    if(e.defaultPrevented) return; // Prevent drag release from firing click
                     
-                    document.getElementById('popupTitle').textContent = `Node: ${node.label}`;
-                    const statusEl = document.getElementById('popupStatus');
                     const infoParts = node.info.split(' | ');
-                    statusEl.textContent = infoParts[0];
+                    const statusClass = node.status === 'critical' ? 'text-red-400 font-bold' : 'text-emerald-400';
                     
-                    if(node.status === 'critical') {
-                        detailPopup.style.borderTopColor = '#ef4444';
-                        statusEl.className = 'text-red-400 font-bold';
-                    } else {
-                        detailPopup.style.borderTopColor = '#10b981';
-                        statusEl.className = 'text-emerald-400';
-                    }
-                    document.getElementById('popupDetails').textContent = infoParts[1];
-                    detailPopup.classList.remove('view-hidden');
+                    const html = `<span class="text-slate-500 font-bold mr-2 border-r border-slate-600 pr-2">NODE: ${node.label}</span> 
+                                  <span class="text-slate-400">Status:</span> <span class="${statusClass} mr-4">${infoParts[0]}</span> 
+                                  <span class="text-slate-400">Details:</span> <span class="text-white">${infoParts[1]}</span>`;
+                    
+                    showTickerInfo(html);
                 });
 
                 // Drag Events
-                g.addEventListener('mousedown', (e) => {
-                    draggedNode = node;
-                });
+                g.addEventListener('mousedown', (e) => { draggedNode = node; });
 
                 nodesLayer.appendChild(g);
             });
@@ -364,11 +405,6 @@
             updatePositions();
             graphInitialized = true;
         }
-
-        // Handle popup closing
-        document.getElementById('closePopupBtn').addEventListener('click', () => {
-            detailPopup.classList.add('view-hidden');
-        });
 
         // Math mapping to SVG coordinate space
         function getMousePosition(evt) {
@@ -399,7 +435,7 @@
                 g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
             });
 
-            // Update Links (Spider web effect)
+            // Update Links
             linksData.forEach(link => {
                 const source = nodesData.find(n => n.id === link.source);
                 const target = nodesData.find(n => n.id === link.target);
@@ -413,7 +449,6 @@
                 hitbox.setAttribute('x1', source.x); hitbox.setAttribute('y1', source.y);
                 hitbox.setAttribute('x2', target.x); hitbox.setAttribute('y2', target.y);
 
-                // Update Bandwidth Label Math (midpoint)
                 if(link.bw) {
                     const midX = (source.x + target.x) / 2;
                     const midY = (source.y + target.y) / 2;
@@ -423,7 +458,7 @@
                     text.setAttribute('y', midY + 4);
                     
                     const bg = document.getElementById(`bg-${link.id}`);
-                    const textWidth = link.type === 'critical' ? 70 : 60; // Approximate widths
+                    const textWidth = link.type === 'critical' ? 70 : 60; 
                     bg.setAttribute('x', midX - (textWidth/2));
                     bg.setAttribute('y', midY - 10);
                     bg.setAttribute('width', textWidth);
