@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telemetry Ingestion & Visualization</title>
+    <title>Packet Visualization Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { 
@@ -11,6 +11,7 @@
             color: #f8fafc; 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             overflow-x: hidden;
+            user-select: none; /* Prevent text selection while dragging */
         }
 
         /* View Transitions */
@@ -19,35 +20,30 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
         /* Drag & Drop Zone */
-        .drop-zone {
-            border: 2px dashed #334155;
-            transition: all 0.2s ease;
-        }
-        .drop-zone.dragover {
-            border-color: #3b82f6;
-            background-color: rgba(59, 130, 246, 0.1);
-        }
+        .drop-zone { border: 2px dashed #334155; transition: all 0.2s ease; }
+        .drop-zone.dragover { border-color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); }
 
-        /* SVG Node Animations */
-        .node-group { cursor: pointer; transition: transform 0.2s; transform-origin: center; }
-        .node-group:hover { transform: scale(1.1); }
+        /* SVG Node & Link Styles */
+        .node-group { cursor: grab; }
+        .node-group:active { cursor: grabbing; }
+        
+        .node-bg { transition: filter 0.2s, stroke 0.2s; }
+        .node-group:hover .node-bg { filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)); }
+        
         .healthy .node-bg { fill: #064e3b; stroke: #10b981; stroke-width: 2; }
         .critical .node-bg { fill: #7f1d1d; stroke: #ef4444; stroke-width: 2; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { filter: drop-shadow(0 0 2px #ef4444); } 50% { filter: drop-shadow(0 0 12px #ef4444); } 100% { filter: drop-shadow(0 0 2px #ef4444); } }
 
-        /* Links & Bandwidth */
-        .link { stroke: #334155; stroke-width: 3; transition: stroke 0.3s; }
-        .link-active { stroke: #0ea5e9; stroke-width: 4; filter: drop-shadow(0 0 5px rgba(14, 165, 233, 0.5)); }
-        .link-critical { stroke: #ef4444; stroke-width: 4; stroke-dasharray: 8; animation: dash 1s linear infinite; }
+        /* Make links easier to click with a thicker transparent hit area */
+        .link-hitbox { stroke: transparent; stroke-width: 15; cursor: pointer; }
+        .link-visible { stroke: #334155; stroke-width: 3; transition: stroke 0.3s; pointer-events: none; }
+        
+        .link-active .link-visible { stroke: #0ea5e9; stroke-width: 4; filter: drop-shadow(0 0 5px rgba(14, 165, 233, 0.5)); }
+        .link-critical .link-visible { stroke: #ef4444; stroke-width: 4; stroke-dasharray: 8; animation: dash 1s linear infinite; }
         @keyframes dash { to { stroke-dashoffset: -16; } }
 
-        .bandwidth-label {
-            font-family: monospace;
-            font-size: 11px;
-            fill: #94a3b8;
-            background: #0b1120;
-            user-select: none;
-        }
+        .bandwidth-label { font-family: monospace; font-size: 11px; fill: #94a3b8; pointer-events: none; }
+        .bandwidth-bg { fill: #0b1120; pointer-events: none; }
         .bandwidth-critical { fill: #fca5a5; font-weight: bold; }
 
         /* Glass Panel Popup */
@@ -56,13 +52,28 @@
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+
+        /* Info Tooltip */
+        .info-tooltip {
+            visibility: hidden; opacity: 0; transition: opacity 0.2s;
+            background-color: #1e293b; color: #cbd5e1; text-align: center; border-radius: 6px;
+            padding: 8px 12px; position: absolute; z-index: 10; bottom: 125%; left: 50%;
+            transform: translateX(-50%); width: 220px; font-size: 0.75rem; border: 1px solid #334155;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        .info-container:hover .info-tooltip { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col relative">
 
-    <main id="view-setup" class="flex-grow flex items-center justify-center p-6 fade-in">
+    <main id="view-setup" class="flex-grow flex flex-col items-center justify-center p-6 fade-in">
+        
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold tracking-tight text-white mb-2">Packet Visualization Tool</h1>
+            <p class="text-slate-400">Ingest .pcap files or simulate network topologies for SR-TE analysis.</p>
+        </div>
+
         <div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8">
-            
             <div class="glass-panel p-8 rounded-xl flex flex-col items-center justify-center text-center drop-zone" id="dropZone">
                 <svg class="w-16 h-16 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                 <h2 class="text-xl font-bold text-white mb-2">Upload Packet Capture</h2>
@@ -73,9 +84,17 @@
                 </button>
             </div>
 
-            <div class="glass-panel p-8 rounded-xl flex flex-col justify-center">
+            <div class="glass-panel p-8 rounded-xl flex flex-col justify-center relative">
+                
+                <div class="absolute top-6 right-6 info-container cursor-help">
+                    <svg class="w-6 h-6 text-slate-400 hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <div class="info-tooltip">
+                        <strong>Prototype Mode:</strong> These configuration fields are for UI demonstration only. The resulting visualization will load a static, pre-defined topology regardless of the values selected here.
+                    </div>
+                </div>
+
                 <h2 class="text-xl font-bold text-white mb-2">Manual Configuration</h2>
-                <p class="text-slate-400 text-sm mb-6">Or define the fabric parameters to generate a live simulation.</p>
+                <p class="text-slate-400 text-sm mb-6 w-5/6">Or define the fabric parameters to generate a live simulation.</p>
                 
                 <div class="space-y-4">
                     <div>
@@ -122,166 +141,290 @@
             </button>
         </header>
 
-        <div class="flex-grow relative flex items-center justify-center" id="canvasContainer">
-            <svg viewBox="0 0 1000 600" class="w-full max-w-5xl h-auto" id="networkMap">
-                
-                <line x1="300" y1="150" x2="150" y2="400" class="link link-active" />
-                <rect x="190" y="260" width="60" height="20" fill="#0b1120" rx="4"/>
-                <text x="220" y="274" class="bandwidth-label" text-anchor="middle">1.2 Tbps</text>
-
-                <line x1="300" y1="150" x2="400" y2="400" class="link" />
-                <rect x="320" y="260" width="60" height="20" fill="#0b1120" rx="4"/>
-                <text x="350" y="274" class="bandwidth-label" text-anchor="middle">450 Gbps</text>
-
-                <line x1="300" y1="150" x2="600" y2="400" class="link link-critical" />
-                <rect x="420" y="260" width="70" height="20" fill="#0b1120" rx="4" stroke="#ef4444" stroke-width="1"/>
-                <text x="455" y="274" class="bandwidth-label bandwidth-critical" text-anchor="middle">DROPPING</text>
-
-                <line x1="300" y1="150" x2="850" y2="400" class="link" />
-
-                <line x1="700" y1="150" x2="150" y2="400" class="link" />
-                <line x1="700" y1="150" x2="400" y2="400" class="link" />
-                <line x1="700" y1="150" x2="600" y2="400" class="link" />
-                <line x1="700" y1="150" x2="850" y2="400" class="link link-active" />
-                <rect x="745" y="260" width="60" height="20" fill="#0b1120" rx="4"/>
-                <text x="775" y="274" class="bandwidth-label" text-anchor="middle">800 Gbps</text>
-
-                <g class="node-group healthy" data-info="Spine-01 | Up | Load: 45%" transform="translate(300, 150)">
-                    <rect x="-35" y="-25" width="70" height="50" rx="8" class="node-bg" />
-                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">SPINE-1</text>
-                </g>
-                <g class="node-group healthy" data-info="Spine-02 | Up | Load: 30%" transform="translate(700, 150)">
-                    <rect x="-35" y="-25" width="70" height="50" rx="8" class="node-bg" />
-                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">SPINE-2</text>
-                </g>
-
-                <g class="node-group healthy" data-info="Leaf-01 | Up | BGP Est." transform="translate(150, 400)">
-                    <circle r="25" class="node-bg" />
-                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-1</text>
-                </g>
-                <g class="node-group healthy" data-info="Leaf-02 | Up | BGP Est." transform="translate(400, 400)">
-                    <circle r="25" class="node-bg" />
-                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-2</text>
-                </g>
-                <g class="node-group critical" data-info="Leaf-03 | CRITICAL | Packet Loss 22%" transform="translate(600, 400)">
-                    <circle r="25" class="node-bg" />
-                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-3</text>
-                </g>
-                <g class="node-group healthy" data-info="Leaf-04 | Up | BGP Est." transform="translate(850, 400)">
-                    <circle r="25" class="node-bg" />
-                    <text y="5" fill="#fff" font-size="12" font-weight="bold" font-family="monospace" text-anchor="middle">L-4</text>
-                </g>
+        <div class="flex-grow relative overflow-hidden" id="canvasContainer">
+            <svg viewBox="0 0 1000 600" class="w-full h-full" id="networkMap">
+                <g id="linksLayer"></g>
+                <g id="nodesLayer"></g>
             </svg>
         </div>
 
-        <div id="nodePopup" class="absolute bottom-8 right-8 w-80 glass-panel rounded-lg p-5 view-hidden fade-in z-50 border-t-4 border-blue-500 shadow-2xl">
-            <h3 class="text-sm font-bold text-white mb-1 uppercase tracking-wider" id="popupTitle">Node Detail</h3>
-            <div class="space-y-2 mt-3 text-sm font-mono text-slate-300 border-t border-slate-700 pt-3">
+        <div id="detailPopup" class="absolute bottom-8 right-8 w-80 glass-panel rounded-lg p-5 view-hidden fade-in z-50 shadow-2xl transition-all">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider" id="popupTitle">Detail</h3>
+                <button id="closePopupBtn" class="text-slate-500 hover:text-white">&times;</button>
+            </div>
+            <div class="space-y-2 mt-2 text-sm font-mono text-slate-300 border-t border-slate-700 pt-3">
                 <div class="flex justify-between"><span class="text-slate-500">Status:</span> <span id="popupStatus" class="text-white">--</span></div>
-                <div class="flex justify-between"><span class="text-slate-500">Details:</span> <span id="popupDetails" class="text-white">--</span></div>
+                <div class="flex flex-col mt-2">
+                    <span class="text-slate-500 mb-1">Details/Reason:</span> 
+                    <span id="popupDetails" class="text-white leading-relaxed">--</span>
+                </div>
             </div>
         </div>
 
     </main>
 
     <script>
-        // DOM Elements
+        // --- 1. VIEW LOGIC & INGESTION ---
         const viewSetup = document.getElementById('view-setup');
         const viewLoading = document.getElementById('view-loading');
         const viewGraph = document.getElementById('view-graph');
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        const generateBtn = document.getElementById('generateBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const simTitle = document.getElementById('simTitle');
-        const loadingSubtext = document.getElementById('loadingSubtext');
 
-        // Logic to transition between views
         function simulateLoading(sourceName) {
             viewSetup.classList.add('view-hidden');
             viewLoading.classList.remove('view-hidden');
-            simTitle.textContent = `Source: ${sourceName}`;
+            document.getElementById('simTitle').textContent = `Source: ${sourceName}`;
 
-            // Simulate parsing steps
-            setTimeout(() => loadingSubtext.textContent = "Analyzing IP headers...", 800);
-            setTimeout(() => loadingSubtext.textContent = "Computing topology map...", 1600);
+            setTimeout(() => document.getElementById('loadingSubtext').textContent = "Analyzing IP headers...", 800);
+            setTimeout(() => document.getElementById('loadingSubtext').textContent = "Computing topology map...", 1600);
 
             setTimeout(() => {
                 viewLoading.classList.add('view-hidden');
                 viewGraph.classList.remove('view-hidden');
-                loadingSubtext.textContent = "Extracting node connections"; // reset
+                document.getElementById('loadingSubtext').textContent = "Extracting node connections"; 
+                initGraph(); // Initialize the draggable canvas
             }, 2500);
         }
 
-        // 1. Drag & Drop File Handling
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
-        });
-
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, preventDefaults, false));
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+        dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
         dropZone.addEventListener('drop', (e) => {
-            let dt = e.dataTransfer;
-            let files = dt.files;
-            if (files.length > 0) {
-                simulateLoading(files[0].name);
-            }
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) simulateLoading(e.dataTransfer.files[0].name);
         });
-
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                simulateLoading(e.target.files[0].name);
-            }
+            if (e.target.files.length > 0) simulateLoading(e.target.files[0].name);
         });
-
-        // 2. Manual Config Generation
-        generateBtn.addEventListener('click', () => {
-            simulateLoading('Manual Fabric Configuration');
-        });
-
-        // 3. Reset Simulation
-        resetBtn.addEventListener('click', () => {
+        document.getElementById('generateBtn').addEventListener('click', () => simulateLoading('Manual Fabric Configuration'));
+        
+        document.getElementById('resetBtn').addEventListener('click', () => {
             viewGraph.classList.add('view-hidden');
             viewSetup.classList.remove('view-hidden');
-            document.getElementById('nodePopup').classList.add('view-hidden');
+            document.getElementById('detailPopup').classList.add('view-hidden');
         });
 
-        // 4. Node Click Interaction for Popup
-        const nodes = document.querySelectorAll('.node-group');
-        const nodePopup = document.getElementById('nodePopup');
+        // --- 2. DYNAMIC GRAPH LOGIC (SPIDER WEB DRAGGING) ---
         
-        nodes.forEach(node => {
-            node.addEventListener('click', () => {
-                const infoRaw = node.getAttribute('data-info').split(' | ');
-                document.getElementById('popupTitle').textContent = infoRaw[0];
+        // Data Models
+        const nodesData = [
+            { id: 's1', type: 'rect', label: 'SPINE-1', x: 300, y: 150, status: 'healthy', info: 'Up | Load: 45%' },
+            { id: 's2', type: 'rect', label: 'SPINE-2', x: 700, y: 150, status: 'healthy', info: 'Up | Load: 30%' },
+            { id: 'l1', type: 'circle', label: 'L-1', x: 150, y: 400, status: 'healthy', info: 'Up | BGP Est.' },
+            { id: 'l2', type: 'circle', label: 'L-2', x: 400, y: 400, status: 'healthy', info: 'Up | BGP Est.' },
+            { id: 'l3', type: 'circle', label: 'L-3', x: 600, y: 400, status: 'critical', info: 'CRITICAL | Packet Loss 22%' },
+            { id: 'l4', type: 'circle', label: 'L-4', x: 850, y: 400, status: 'healthy', info: 'Up | BGP Est.' }
+        ];
+
+        const linksData = [
+            { id: 'link1', source: 's1', target: 'l1', type: 'active', bw: '1.2 Tbps' },
+            { id: 'link2', source: 's1', target: 'l2', type: 'normal', bw: '450 Gbps' },
+            { id: 'link3', source: 's1', target: 'l3', type: 'critical', bw: 'DROPPING', error: 'Microburst congestion on interface ge-0/0/2 causing tail drops. Recommended action: Check buffer allocation.' },
+            { id: 'link4', source: 's1', target: 'l4', type: 'normal', bw: '' },
+            { id: 'link5', source: 's2', target: 'l1', type: 'normal', bw: '' },
+            { id: 'link6', source: 's2', target: 'l2', type: 'normal', bw: '' },
+            { id: 'link7', source: 's2', target: 'l3', type: 'normal', bw: '' },
+            { id: 'link8', source: 's2', target: 'l4', type: 'active', bw: '800 Gbps' },
+        ];
+
+        const svg = document.getElementById('networkMap');
+        const nodesLayer = document.getElementById('nodesLayer');
+        const linksLayer = document.getElementById('linksLayer');
+        const detailPopup = document.getElementById('detailPopup');
+        let draggedNode = null;
+        let graphInitialized = false;
+
+        function initGraph() {
+            if(graphInitialized) return; // Prevent double rendering
+            
+            // Render Links
+            linksData.forEach(link => {
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                g.setAttribute('class', `link-group link-${link.type}`);
+                g.id = `g-${link.id}`;
+
+                // Invisible wide hitbox for easier clicking
+                const hitbox = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                hitbox.setAttribute('class', 'link-hitbox');
+                hitbox.id = `hitbox-${link.id}`;
                 
-                const statusEl = document.getElementById('popupStatus');
-                statusEl.textContent = infoRaw[1];
-                
-                // Colorize critical states
-                if(infoRaw[1] === 'CRITICAL') {
-                    nodePopup.style.borderTopColor = '#ef4444';
-                    statusEl.className = 'text-red-400 font-bold';
-                } else {
-                    nodePopup.style.borderTopColor = '#3b82f6';
-                    statusEl.className = 'text-emerald-400';
+                // Visible line
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute('class', 'link-visible');
+                line.id = `line-${link.id}`;
+
+                g.appendChild(hitbox);
+                g.appendChild(line);
+
+                // Add Bandwidth Label if exists
+                if(link.bw) {
+                    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    rect.setAttribute('class', 'bandwidth-bg');
+                    rect.setAttribute('rx', '4');
+                    rect.id = `bg-${link.id}`;
+                    
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute('class', `bandwidth-label ${link.type === 'critical' ? 'bandwidth-critical' : ''}`);
+                    text.setAttribute('text-anchor', 'middle');
+                    text.textContent = link.bw;
+                    text.id = `text-${link.id}`;
+                    
+                    g.appendChild(rect);
+                    g.appendChild(text);
                 }
 
-                document.getElementById('popupDetails').textContent = infoRaw[2];
-                nodePopup.classList.remove('view-hidden');
+                // NEW: Link Click Event for Popup
+                hitbox.addEventListener('click', () => {
+                    document.getElementById('popupTitle').textContent = `Link Interaction`;
+                    const statusEl = document.getElementById('popupStatus');
+                    statusEl.textContent = link.type.toUpperCase();
+                    
+                    if(link.type === 'critical') {
+                        detailPopup.style.borderTopColor = '#ef4444';
+                        statusEl.className = 'text-red-400 font-bold';
+                        document.getElementById('popupDetails').textContent = link.error || "Link down. Check physical connectivity.";
+                    } else {
+                        detailPopup.style.borderTopColor = '#3b82f6';
+                        statusEl.className = 'text-emerald-400';
+                        document.getElementById('popupDetails').textContent = `Current Bandwidth: ${link.bw || 'Idle'}. No errors detected.`;
+                    }
+                    detailPopup.classList.remove('view-hidden');
+                });
+
+                linksLayer.appendChild(g);
             });
+
+            // Render Nodes
+            nodesData.forEach(node => {
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                g.setAttribute('class', `node-group ${node.status}`);
+                g.id = `node-${node.id}`;
+                
+                if (node.type === 'rect') {
+                    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    rect.setAttribute('x', '-35'); rect.setAttribute('y', '-25');
+                    rect.setAttribute('width', '70'); rect.setAttribute('height', '50');
+                    rect.setAttribute('rx', '8'); rect.setAttribute('class', 'node-bg');
+                    g.appendChild(rect);
+                } else {
+                    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    circle.setAttribute('r', '25');
+                    circle.setAttribute('class', 'node-bg');
+                    g.appendChild(circle);
+                }
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute('y', '5');
+                text.setAttribute('fill', '#fff');
+                text.setAttribute('font-size', '12');
+                text.setAttribute('font-weight', 'bold');
+                text.setAttribute('font-family', 'monospace');
+                text.setAttribute('text-anchor', 'middle');
+                text.textContent = node.label;
+                g.appendChild(text);
+
+                // Node Click Event for Popup
+                g.addEventListener('click', (e) => {
+                    // Prevent drag release from firing click
+                    if(e.defaultPrevented) return; 
+                    
+                    document.getElementById('popupTitle').textContent = `Node: ${node.label}`;
+                    const statusEl = document.getElementById('popupStatus');
+                    const infoParts = node.info.split(' | ');
+                    statusEl.textContent = infoParts[0];
+                    
+                    if(node.status === 'critical') {
+                        detailPopup.style.borderTopColor = '#ef4444';
+                        statusEl.className = 'text-red-400 font-bold';
+                    } else {
+                        detailPopup.style.borderTopColor = '#10b981';
+                        statusEl.className = 'text-emerald-400';
+                    }
+                    document.getElementById('popupDetails').textContent = infoParts[1];
+                    detailPopup.classList.remove('view-hidden');
+                });
+
+                // Drag Events
+                g.addEventListener('mousedown', (e) => {
+                    draggedNode = node;
+                });
+
+                nodesLayer.appendChild(g);
+            });
+
+            updatePositions();
+            graphInitialized = true;
+        }
+
+        // Handle popup closing
+        document.getElementById('closePopupBtn').addEventListener('click', () => {
+            detailPopup.classList.add('view-hidden');
         });
+
+        // Math mapping to SVG coordinate space
+        function getMousePosition(evt) {
+            const CTM = svg.getScreenCTM();
+            return {
+                x: (evt.clientX - CTM.e) / CTM.a,
+                y: (evt.clientY - CTM.f) / CTM.d
+            };
+        }
+
+        svg.addEventListener('mousemove', (e) => {
+            if (draggedNode) {
+                e.preventDefault(); // Stop text selection
+                const pos = getMousePosition(e);
+                draggedNode.x = pos.x;
+                draggedNode.y = pos.y;
+                updatePositions();
+            }
+        });
+
+        svg.addEventListener('mouseup', () => { draggedNode = null; });
+        svg.addEventListener('mouseleave', () => { draggedNode = null; });
+
+        function updatePositions() {
+            // Update Nodes
+            nodesData.forEach(node => {
+                const g = document.getElementById(`node-${node.id}`);
+                g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+            });
+
+            // Update Links (Spider web effect)
+            linksData.forEach(link => {
+                const source = nodesData.find(n => n.id === link.source);
+                const target = nodesData.find(n => n.id === link.target);
+                
+                const line = document.getElementById(`line-${link.id}`);
+                const hitbox = document.getElementById(`hitbox-${link.id}`);
+                
+                line.setAttribute('x1', source.x); line.setAttribute('y1', source.y);
+                line.setAttribute('x2', target.x); line.setAttribute('y2', target.y);
+                
+                hitbox.setAttribute('x1', source.x); hitbox.setAttribute('y1', source.y);
+                hitbox.setAttribute('x2', target.x); hitbox.setAttribute('y2', target.y);
+
+                // Update Bandwidth Label Math (midpoint)
+                if(link.bw) {
+                    const midX = (source.x + target.x) / 2;
+                    const midY = (source.y + target.y) / 2;
+                    
+                    const text = document.getElementById(`text-${link.id}`);
+                    text.setAttribute('x', midX);
+                    text.setAttribute('y', midY + 4);
+                    
+                    const bg = document.getElementById(`bg-${link.id}`);
+                    const textWidth = link.type === 'critical' ? 70 : 60; // Approximate widths
+                    bg.setAttribute('x', midX - (textWidth/2));
+                    bg.setAttribute('y', midY - 10);
+                    bg.setAttribute('width', textWidth);
+                    bg.setAttribute('height', '20');
+                }
+            });
+        }
     </script>
 </body>
 </html>
